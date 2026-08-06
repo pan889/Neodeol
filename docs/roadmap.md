@@ -129,13 +129,27 @@ WebGL, 무기 추가, 상점, 서버, 로비.
 
 여기서부터 버릴 코드가 아니다. `client/src/sim/`을 제대로 만든다.
 
-- `tools/sandbox/automaton.js` → `client/src/sim/terrain.ts` 이식.
-  **자동자는 이미 정수 전용이고 제안/해소 2단계이며 순서 독립성이 검증되어 있다.**
-  Phase 1 의 탄도·바람 코드(float 허용)를 정수화하는 것이 실제 작업이다
-- `float` → 정수 서브픽셀 전면 전환 (`simulation.md` §2)
-- `tables/trig.bin` 생성 및 커밋 (`tools/gen_trig.py`)
-- `isqrt`, `floorDiv` 헬퍼
-- `test_no_float` 정적 검사 — **서버 쪽은 이미 동작한다** (`server/tests/test_determinism.py`)
+```
+client/
+  src/sim/
+    intmath.ts     floorDiv · isqrt · hash32 · fnv1a32.  **나눗셈이 허용된 유일한 파일**
+    trig.ts        tables/trig.bin 조회. 런타임 Math.sin 금지
+    terrain.ts     automaton.js 의 정수 이식 (§3~§8)
+    ballistics.ts  sim.js 의 정수 이식 (§4~§6)
+  tools/check-no-float.mjs   정적 검사 (TS 쪽 test_no_float)
+  tests/determinism.mts      결정론 게이트
+  tests/cross-sim.mts        Phase 3 대기 (명확히 SKIP 한다)
+tools/gen_trig.py            tables/trig.bin 생성기
+```
+
+- [x] `tables/trig.bin` 생성·커밋. **Phase 1 런타임 표와 바이트 단위로 동일**하므로
+      표로 전환해도 체감이 안 바뀐다 (sha256 고정, 서버·클라 양쪽 테스트가 대조)
+- [x] `isqrt` / `floorDiv` 헬퍼. `floorDiv(-7,2) === -4` — JS 의 `(-7/2)|0` 은 -3 이라 못 쓴다
+- [x] 남아 있던 float 전부 제거 — 런타임 `Math.sin/cos`, `Math.floor(a/b)`,
+      `isqrt` 안의 `n/x`, `Math.abs/max/min`
+- [x] `check-no-float.mjs` 정적 검사. **의도적 위반 5종을 주입해 실제로 잡는지 확인했다**
+- [x] **빌드 도구 없이 돌아간다** — `node --experimental-strip-types` 로 `.ts` 를 직접 실행한다.
+      `tsc` 는 타입 검사(`npm run typecheck`)에만 쓴다
 
 **상수 정수화 규칙** (`docs/decisions.md` A4)
 
@@ -144,11 +158,21 @@ WebGL, 무기 추가, 상점, 서버, 로비.
 3. 확정 상수는 **문서 표가 기준**이고 `server/src/talus/constants.py` 가 기계 판독 사본이다
 4. 정수화 후 `harness.mjs` 실측을 다시 돌려 각도·정착 스텝이 5% 이내인지 확인한다
 
-**완료 조건**
-- [ ] 같은 시드 + 같은 입력을 100회 재생해 체크섬이 전부 같다
-- [ ] Phase 1과 체감이 동일하다 (정수화로 감각이 변하면 상수를 다시 맞춘다)
-- [ ] `sim/`에 부동소수점이 하나도 없다
-- [ ] `constants.py` 의 `PROVISIONAL` 집합이 비었다 (`GET /version` 으로 확인)
+**완료 조건** — `node --experimental-strip-types client/tests/determinism.mts`
+
+- [x] 같은 시드 + 같은 입력을 **100회** 재생해 체크섬이 전부 같다 (질량도)
+- [x] **Phase 1과 체감이 동일하다** — 주관적 판단이 아니라 **비트 단위로** 판정했다.
+      TS 이식과 Phase 0 의 JS 참조 구현을 같은 초기 격자에서 4시드 × 300스텝 돌려
+      매 스텝 체크섬을 비교했고 전부 일치한다. `carve`·`deposit`·`connectivity` 도 동일
+- [x] `client/src/sim/` 에 부동소수점이 하나도 없다 (정적 검사)
+- [x] 순서 독립성·동점 0·활성 행 무결성이 TS 쪽에서도 성립한다 (3시드)
+- [ ] `constants.py` 의 `PROVISIONAL` 집합이 비었다
+
+> ⚠️ **마지막 항목은 Phase 2 가 끝낼 수 없다.** `PROVISIONAL` 에 남은 것은
+> `GRAVITY`·`POWER_SCALE`·`WIND_MAX`·`SLIDE_CHANCE_*`·`MAX_SETTLE_STEPS`·`BLAST_RESIST_Q8` 이고
+> 전부 **감각으로 정하는 값**이다 — Phase 1 의 "30분을 계속 쏘게 되는가" 판정에 딸려 있다.
+> 정수화는 그 값들을 확정하는 작업이 아니라 **확정된 값을 안전하게 담는 그릇을 만드는 작업**이다.
+> 이 조건은 Phase 1 완료 조건으로 옮기는 것이 맞다.
 
 **하지 않는 것**
 Python 포팅, 서버 로직, 렌더링 개선.

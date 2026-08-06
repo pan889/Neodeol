@@ -81,7 +81,11 @@ server/src/talus/
     test_determinism.py   ← 가장 중요한 테스트. §결정론 게이트
 
 client/src/
-  sim/          정수 서브픽셀 시뮬레이션. Phase 2에서 만든다.
+  sim/          정수 서브픽셀 시뮬레이션 (Phase 2)
+    intmath.ts    floorDiv · isqrt · hash32.  **나눗셈이 허용된 유일한 파일**
+    trig.ts       tables/trig.bin 조회. 런타임 Math.sin 금지
+    terrain.ts    자동자
+    ballistics.ts 탄도 · 탱크
   render/       WebGL2 렌더러. sim을 읽기만 한다.
   ui/           조준 HUD, 상점, 로비
   net/          WebSocket 클라이언트
@@ -126,6 +130,10 @@ node tools/sandbox/harness.mjs
 # 1) 서버 자기 자신과의 재현성 — 지금 실행 가능하다
 docker compose exec server python -m pytest /app/tests/test_determinism.py
 #    도커 없이:  cd server && PYTHONPATH=src python -m pytest tests/test_determinism.py
+
+# 1.5) 클라이언트 sim — 지금 실행 가능하다 (Phase 2)
+#      정적 float 검사 + 100회 재생 재현성 + JS 참조 구현과 비트 단위 대조
+npm --prefix client test
 
 # 2) 서버 ↔ 클라이언트 교차 검증 — Phase 3 이후
 #    동일 시드 + 동일 입력 로그로 양쪽을 돌려 매 턴 지형 체크섬 비교

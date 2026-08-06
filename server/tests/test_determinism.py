@@ -7,10 +7,10 @@
 | `test_no_float` | **지금 동작한다** | `sim/` 이 비어 있어도 유효한 정적 검사다 |
 | `test_constants_stable` | **지금 동작한다** | 상수 해시가 재현되는지 |
 | `test_replay_stable` | Phase 3 대기 | `sim/` 이 없다 |
-| `test_trig_table` | Phase 2 대기 | `tables/trig.bin` 이 없다 |
+| `test_trig_table` | **지금 동작한다** | Phase 2 에서 `tables/trig.bin` 을 커밋했다 |
 | `test_cross_sim` | Phase 3 대기 | 골든 리플레이가 없다 |
 
-Phase 3 이전에는 대기 항목이 `skip` 으로 남는다. **`skip` 을 지우고 `pass` 로
+남은 두 항목은 Phase 3 산출물이라 `skip` 으로 남는다. **`skip` 을 지우고 `pass` 로
 바꾸지 마라.** 결정론 버그를 은폐하는 가장 흔한 경로다.
 """
 
@@ -218,14 +218,41 @@ def test_replay_stable() -> None:
     pytest.fail("Phase 3 에서 구현한다. sim/ 이 생겼는데 이 테스트가 없으면 게이트가 뚫린다.")
 
 
+#: `tools/gen_trig.py` 가 생성한 표의 고정 해시.
+#: 값이 바뀌면 **이유를 커밋 메시지에 적고** 여기를 갱신한다. 이유 없는 갱신은 금지다 —
+#: 그게 결정론 버그를 은폐하는 가장 흔한 경로다 (CLAUDE.md §결정론 게이트).
+TRIG_SHA256 = "100aa8d037821279b236d69f632f87c43c74e8b700d503e881672e35b6a0a61b"
+
+
 @pytest.mark.determinism
 @pytest.mark.skipif(
     TRIG_BIN is None or not TRIG_BIN.is_file(),
-    reason="tables/trig.bin 이 없다 — roadmap Phase 2",
+    reason="tables/trig.bin 이 없다 — python3 tools/gen_trig.py 로 생성한다",
 )
 def test_trig_table() -> None:
-    """`tables/trig.bin` 의 해시가 고정값과 일치한다. (simulation.md §3)"""
-    pytest.fail("Phase 2 에서 tools/gen_trig.py 와 함께 구현한다.")
+    """`tables/trig.bin` 이 고정 해시와 일치하고 형식이 맞는다. (simulation.md §3)
+
+    서버와 클라이언트가 **같은 바이트**를 봐야 한다. 생성 스크립트만 커밋하는
+    것으로는 부족하다 — libm 이 플랫폼마다 마지막 자리에서 다를 수 있다.
+    """
+    import hashlib
+    import struct
+
+    blob = TRIG_BIN.read_bytes()
+    count = constants.TRIG_DECIDEG_MAX + 1  # 1801
+    assert len(blob) == count * 2 * 2, f"크기가 다르다: {len(blob)}"
+    assert hashlib.sha256(blob).hexdigest() == TRIG_SHA256, (
+        "trig.bin 이 고정 해시와 다르다. 의도적으로 바꿨다면 커밋 메시지에 이유를 적고 "
+        "이 파일의 TRIG_SHA256 을 갱신한다."
+    )
+
+    sin = struct.unpack_from(f"<{count}h", blob, 0)
+    cos = struct.unpack_from(f"<{count}h", blob, count * 2)
+    scale = 1 << constants.TRIG_SHIFT
+    assert (sin[0], cos[0]) == (0, scale), "0° 값이 틀렸다"
+    assert (sin[900], cos[900]) == (scale, 0), "90° 값이 틀렸다"
+    assert (sin[1800], cos[1800]) == (0, -scale), "180° 값이 틀렸다"
+    assert sin[450] == cos[450] == 2896, "45° 값이 틀렸다"
 
 
 @pytest.mark.crosssim
