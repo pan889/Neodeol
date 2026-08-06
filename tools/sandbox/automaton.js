@@ -377,6 +377,36 @@
     return { removed: removed, conv: conv };
   }
 
+  /* ══ 흙 쌓기 — deposit (§8 의 역연산) ═════════════════════════════════
+     적층탄이 요구하는 유일한 "지형 추가" 연산이다 (game-design.md §6.1).
+     terrain.md §8 에는 제거만 있었다 — `decisions.md` C9.
+
+     규칙 (전부 자명한 것에서 따라온다. 새 결정을 만들지 않았다):
+       · 반경 내 **EMPTY 셀만** 채운다. 비-EMPTY 를 덮어쓰지 않는다.
+         덮어쓰면 BEDROCK 을 지우거나 ROCK 을 SOIL 로 바꿀 수 있고, 그건 §2 위반이다.
+       · 판정식은 carve 와 같은 제곱 비교. 재질 저항은 없다 (쌓는 쪽이라 저항이 무의미하다).
+       · 쌓은 영역을 활성화한다 → 자동자가 곧바로 안식각까지 흘러내린다.
+         즉 "벽"이 아니라 "더미"가 만들어진다. SOIL 로 쌓으면 40.3° 언덕이 된다.
+       · 연결성 검사를 부르지 않는다. ROCK 을 만들지 않으므로 §6 과 무관하다.
+     반환: 실제로 채운 셀 수 */
+  function deposit(cx, cy, radius, mat) {
+    var r2 = radius * radius;
+    var y0 = Math.max(0, cy - radius), y1 = Math.min(H - 1, cy + radius);
+    var x0 = Math.max(0, cx - radius), x1 = Math.min(W - 1, cx + radius);
+    var filled = 0;
+    for (var y = y0; y <= y1; y++) {
+      var dy = y - cy, dy2 = dy * dy, base = y * W;
+      for (var x = x0; x <= x1; x++) {
+        var idx = base + x;
+        if (grid[idx] !== EMPTY) continue;
+        var dx = x - cx;
+        if (dx * dx + dy2 <= r2) { grid[idx] = mat; filled++; }
+      }
+    }
+    markRows(y0 - 2, y1 + 2);
+    return filled;
+  }
+
   /* ══ 암반 구조 붕괴 (§6) ══════════════════════════════════════════════
      BEDROCK 을 시드로 ROCK ∪ BEDROCK 을 4방향 연결로 flood fill.
      도달하지 못한 ROCK 을 전부 SCREE 로 바꾼다.
@@ -461,6 +491,7 @@
 
     step: step,
     carve: carve,
+    deposit: deposit,
     connectivity: connectivity,
     countMobile: countMobile,
     checksum: checksum,

@@ -150,8 +150,41 @@
     },
   };
 
+  /* ══ 좌우 경계 봉인 ═══════════════════════════════════════════════════
+     terrain.md §1.1 — 격자 밖은 EMPTY 라서 최외곽 열의 낙하 재질은 매 스텝
+     절반의 확률로 흘러나간다. §1.1 은 "맵 생성기가 좌우 끝을 BEDROCK/ROCK 으로
+     막기 때문에 문제되지 않는다"고 적었지만 **막는 코드가 없었다.**
+
+     실측: hills 프리셋을 21,728스텝 정착시키니 x=0 의 표면이 322px → 652px 로
+     내려앉았다. 맵 양끝에 300px 깊이의 구멍이 파이고, 그 위로 쏜 포탄이 지형에
+     맞지 않고 격자 밖으로 빠져나가 게임이 성립하지 않았다.
+
+     그래서 최외곽 `EDGE_SEAL_COLS` 열을 그 열의 표면부터 바닥까지 BEDROCK 으로 채운다.
+     BEDROCK 은 낙하하지 않고 비-EMPTY 장애물이므로, 안쪽 열의 흙이 좌우로 미끄러질
+     때 `dir == EMPTY` 조건이 깨져 유출이 원천 차단된다.
+     `decisions.md` B1-4 가 이 규칙을 맵 생성 명세에 넣을 것을 요구한다. */
+  var EDGE_SEAL_COLS = 2;
+
+  function sealEdges() {
+    for (var i = 0; i < EDGE_SEAL_COLS; i++) {
+      sealColumn(i, EDGE_SEAL_COLS);                       // 왼쪽
+      sealColumn(W - 1 - i, W - 1 - EDGE_SEAL_COLS);       // 오른쪽
+    }
+  }
+  /* 봉인할 열 x 를, 참조 열 ref 의 표면 높이에 맞춰 BEDROCK 으로 채운다.
+     자기 열의 표면을 쓰면 이미 비어 있을 수 있어 참조 열을 본다. */
+  function sealColumn(x, ref) {
+    if (x < 0 || x >= W) return;
+    var top = H;
+    for (var y = 0; y < H; y++) {
+      if (grid[y * W + ref] !== EMPTY) { top = y; break; }
+    }
+    for (var yy = top; yy < H; yy++) grid[yy * W + x] = BEDROCK;
+  }
+
   function loadPreset(name) {
     (PRESETS[name] || PRESETS.layers)();
+    sealEdges();
     S.connectivity();
     S.markAll();
     S.setStep(0);
@@ -358,6 +391,7 @@
   root.TalusLab = {
     fillRect: fillRect, isqrt: isqrt, ridge: ridge,
     PRESETS: PRESETS, loadPreset: loadPreset, LEG: LEG,
+    sealEdges: sealEdges, EDGE_SEAL_COLS: EDGE_SEAL_COLS,
     COLLAPSE_BLOCK_CELLS: COLLAPSE_BLOCK_CELLS,
     settleHeadless: settleHeadless,
     detectFloor: detectFloor, surfaceProfile: surfaceProfile,

@@ -111,12 +111,24 @@
      ══════════════════════════════════════════════════════════════════ */
   var pathX = new Int32Array(2048), pathY = new Int32Array(2048);
 
-  function simulateShot(x0, y0, angle10, power, wind, shooterIdx, tanks) {
+  function simulateShot(x0, y0, angle10, power, wind, shooterIdx, tanks, splitWeapon) {
     var v0 = (power * CFG.powerScale) >> 10;
     var vx = ((v0 * COS[angle10]) >> 12);
     var vy = -((v0 * SIN[angle10]) >> 12);          // 괄호 필수 — simulation.md §2.2
+    return integrate(x0, y0, vx, vy, wind, shooterIdx, tanks, !!splitWeapon);
+  }
+
+  /* 자탄용 — 이미 정해진 속도에서 이어 적분한다 (분열탄). */
+  function continueShot(x0, y0, vx, vy, wind, shooterIdx, tanks) {
+    return integrate(x0, y0, vx, vy, wind, shooterIdx, tanks, false);
+  }
+
+  /* 적분 본체. stopAtApex 면 vy 가 0 이상으로 넘어가는 첫 틱에서 멈추고
+     그 시점의 위치·속도를 함께 돌려준다 — 분열탄이 거기서 갈라진다. */
+  function integrate(x0, y0, vx, vy, wind, shooterIdx, tanks, stopAtApex) {
     var x = x0, y = y0, n = 0;
     var hit = "timeout", hitTank = -1;
+    var apexReached = false, apexX = 0, apexY = 0, apexVx = 0, apexVy = 0;
 
     for (var t = 0; t < CFG.maxFlightTicks; t++) {
       /* 틱당 순서를 고정한다 (§4.2) */
@@ -152,9 +164,19 @@
 
       if (n < pathX.length) { pathX[n] = x; pathY[n] = y; n++; }
       if (done) break;
+
+      /* 정점 판정 — vy 가 처음 0 이상이 되는 틱. 상승이 끝난 지점이다. */
+      if (stopAtApex && !apexReached && vy >= 0) {
+        apexReached = true;
+        apexX = x; apexY = y; apexVx = vx; apexVy = vy;
+        break;
+      }
     }
 
-    return { xs: pathX, ys: pathY, n: n, hit: hit, hitX: x, hitY: y, hitTank: hitTank };
+    return {
+      xs: pathX, ys: pathY, n: n, hit: hit, hitX: x, hitY: y, hitTank: hitTank,
+      apexReached: apexReached, apexX: apexX, apexY: apexY, apexVx: apexVx, apexVy: apexVy,
+    };
   }
 
   /* ── 평지 사거리 (simulation.md §8.1) ─────────────────────────────
@@ -288,7 +310,8 @@
     TANK_W: TANK_W, TANK_H: TANK_H, MAX_HP: MAX_HP,
     CFG: CFG, STANDARD: STANDARD,
     SIN: SIN, COS: COS, isqrt: isqrt,
-    simulateShot: simulateShot, muzzle: muzzle, flatRangePx: flatRangePx,
+    simulateShot: simulateShot, continueShot: continueShot,
+    muzzle: muzzle, flatRangePx: flatRangePx,
     computeDamage: computeDamage,
     reseatTank: reseatTank, supported: supported,
     buriedFraction: buriedFraction, fallDamage: fallDamage,
