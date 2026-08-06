@@ -1,0 +1,93 @@
+name: talus
+
+# 로컬 개발용 스택. 배포(EKS)는 docs/deployment.md 를 따른다.
+#   docker compose up -d --build
+#   → 샌드박스   http://localhost:8000/sandbox/
+#   → 헬스       http://localhost:8000/readyz
+#
+# server/src 와 tools 는 읽기전용 바인드 마운트라서 소스를 고치면
+# uvicorn --reload 가 자동으로 반영한다. 의존성(requirements.txt)이 바뀔 때만
+# --build 가 필요하다.
+#
+# 호스트 포트는 전부 오버라이드 가능하고, 기본값은 표준 포트를 피한다.
+# 개발 기계에는 이미 다른 Redis/PostgreSQL 이 떠 있는 경우가 많아서, 표준 포트를
+# 점유하면 "포트가 이미 할당됨"으로 스택이 안 뜬다. 컨테이너끼리는 compose 네트워크
+# 내부 이름(redis:6379, postgres:5432)으로 통신하므로 호스트 포트는 디버깅 편의일 뿐이다.
+#   TALUS_PORT=8080 docker compose up -d      # 또는 .env 파일에 적는다
+
+services:
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    image: talus-server:dev
+    container_name: talus-server
+    restart: unless-stopped
+    command: >
+      uvicorn talus.net.app:app
+      --host 0.0.0.0 --port 8000
+      --reload --reload-dir /app/src
+    environment:
+      TALUS_ENV: dev
+      TALUS_LOG_LEVEL: info
+      TALUS_REDIS_URL: redis://redis:6379/0
+      TALUS_PG_DSN: postgresql://talus:talus@postgres:5432/talus
+      TALUS_STATIC_DIR: /app/tools
+      PYTHONPATH: /app/src
+    ports:
+      - "${TALUS_PORT:-8000}:8000"
+    volumes:
+      - ./server/src:/app/src:ro
+      - ./server/tests:/app/tests:ro
+      - ./server/pyproject.toml:/app/pyproject.toml:ro
+      - ./tools:/app/tools:ro
+      - ./docs:/app/docs:ro
+      - ./tables:/app/tables:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u,sys; sys.exit(0 if u.urlopen('http://127.0.0.1:8000/healthz',timeout=3).status==200 else 1)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+      start_period: 8s
+
+  # 룸 상태 저장소. 턴제라 트래픽이 낮아 단일 인스턴스로 충분하다.
+  redis:
+    image: redis:7-alpine
+    container_name: talus-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    ports:
+      - "${TALUS_REDIS_PORT:-16379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 전적·상점 저장소.
+  postgres:
+    image: postgres:16-alpine
+    container_name: talus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: talus
+      POSTGRES_PASSWORD: talus
+      POSTGRES_DB: talus
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "${TALUS_PG_PORT:-15432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talus -d talus"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talus — 손맛 프로토타입 (Phase 1)</title>
+<style>
+  :root{
+    --ink:#E8DFD2; --panel:#1A1720; --panel2:#231E2B; --line:#3A3243;
+    --accent:#3DDCFF; --warn:#FF3D9E; --ok:#B4FF3D; --gold:#D99A5B;
+    --team-a:#3DDCFF; --team-b:#B4FF3D;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:#120F17; color:var(--ink); overflow:hidden;
+    font-family:ui-sans-serif,-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+    font-size:12px;
+  }
+  #app{display:grid; grid-template-columns:250px minmax(0,1fr); height:100vh; gap:1px; background:var(--line)}
+  aside{background:var(--panel); overflow-y:auto; padding:10px 10px 40px}
+  main{background:#0C0A11; display:flex; flex-direction:column; min-width:0}
+
+  h1{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+  h1 small{display:block; letter-spacing:0; text-transform:none; color:#8A8175; font-size:10px; margin-top:3px; line-height:1.5}
+  h2{font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#9A8F7F;
+     margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line)}
+
+  .row{display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px}
+  button{font:inherit; font-size:11px; color:var(--ink); background:var(--panel2);
+         border:1px solid var(--line); border-radius:3px; padding:5px 8px; cursor:pointer; flex:1 1 auto}
+  button:hover{background:#2E2738; border-color:#4C4258}
+  button.on{background:var(--accent); border-color:var(--accent); color:#0C0A11; font-weight:600}
+  button.wide{flex-basis:100%}
+  button.fire{background:var(--warn); border-color:var(--warn); color:#0C0A11; font-weight:700; padding:9px}
+  button.fire:disabled{background:var(--panel2); border-color:var(--line); color:#6E6478; font-weight:400; cursor:default}
+
+  .p{margin-bottom:7px}
+  .p label{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px; gap:6px}
+  .p .nm{color:#B8AC9A; font-size:10.5px}
+  .p .vl{font-family:ui-monospace,"Martian Mono",monospace; font-variant-numeric:tabular-nums; font-size:11px}
+  .p input[type=range]{width:100%; height:14px; -webkit-appearance:none; background:transparent; cursor:pointer}
+  .p input[type=range]::-webkit-slider-runnable-track{height:3px; background:var(--line); border-radius:2px}
+  .p input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:11px; height:11px; margin-top:-4px; border-radius:50%; background:var(--gold)}
+  .p .hint{color:#6E6478; font-size:9.5px; margin-top:1px; line-height:1.35}
+
+  .chk{display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; color:#B8AC9A; cursor:pointer; font-size:10.5px; line-height:1.4}
+  .chk input{accent-color:var(--accent); margin-top:1px; flex:none}
+
+  #wrap{flex:1; display:flex; align-items:center; justify-content:center; padding:8px; min-height:0}
+  #stage{position:relative; aspect-ratio:16/9; width:1280px; max-width:100%; max-height:100%;
+         box-shadow:0 0 0 1px var(--line), 0 18px 50px #0009; cursor:crosshair; touch-action:none}
+  canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  #ovl{pointer-events:none}
+
+  #bar{display:flex; gap:16px; align-items:center; padding:7px 12px; border-top:1px solid var(--line);
+       background:var(--panel); font-family:ui-monospace,"Martian Mono",monospace;
+       font-variant-numeric:tabular-nums; font-size:12px; flex-wrap:wrap}
+  #bar b{color:#8A8175; font-weight:400; letter-spacing:.08em; text-transform:uppercase; font-size:9.5px; margin-right:4px}
+  #bar .big{font-size:16px}
+
+  .aim{display:grid; grid-template-columns:auto 1fr; gap:4px 8px; align-items:center; margin-bottom:8px}
+  .aim span{color:#8A8175; font-size:10px; letter-spacing:.08em; text-transform:uppercase}
+  .aim input{width:100%; background:var(--panel2); border:1px solid var(--line); border-radius:3px;
+             color:var(--ink); padding:4px 6px; font-family:ui-monospace,monospace;
+             font-variant-numeric:tabular-nums; font-size:13px}
+
+  table.rd{width:100%; border-collapse:collapse; font-family:ui-monospace,"Martian Mono",monospace;
+           font-variant-numeric:tabular-nums; font-size:11px}
+  table.rd td{padding:2.5px 0}
+  table.rd td:first-child{color:#8A8175}
+  table.rd td:last-child{text-align:right}
+
+  .hpbar{height:5px; background:#2A2432; border-radius:3px; overflow:hidden; margin-top:3px}
+  .hpbar i{display:block; height:100%; background:var(--ok); transition:width .2s}
+  .pcard{padding:6px 7px; border:1px solid var(--line); border-radius:4px; margin-bottom:5px; background:#15121C}
+  .pcard.turn{border-color:var(--accent); background:#17222A}
+  .pcard.dead{opacity:.4}
+  .pcard .nm{display:flex; justify-content:space-between; font-size:11px}
+  .pcard .nm b{font-weight:600}
+
+  #log{margin-top:6px; font-family:ui-monospace,"Martian Mono",monospace; font-size:10px; line-height:1.5;
+       color:#9A8F7F; max-height:180px; overflow-y:auto; background:#15121C; border:1px solid var(--line);
+       border-radius:3px; padding:6px; white-space:pre-wrap}
+  #log b{color:var(--ok); font-weight:400}
+  #log i{color:var(--warn); font-style:normal}
+  #log em{color:var(--accent); font-style:normal}
+  .note{color:#6E6478; font-size:9.5px; line-height:1.5; margin-top:6px}
+  kbd{background:var(--panel2); border:1px solid var(--line); border-bottom-width:2px; border-radius:3px;
+      padding:0 3px; font-family:ui-monospace,monospace; font-size:9.5px; color:#B8AC9A}
+</style>
+</head>
+<body>
+<div id="app">
+<aside>
+  <h1>Talus Prototype<small>Phase 1 — 손맛<br>docs/roadmap.md Phase 1</small></h1>
+
+  <h2>조준</h2>
+  <div class="aim">
+    <span>각도</span><input type="number" id="iAngle" min="0" max="180" step="0.1">
+    <span>파워</span><input type="number" id="iPower" min="0" max="1000" step="1">
+  </div>
+  <div class="row"><button id="bFire" class="fire wide">발사</button></div>
+  <div class="note">
+    <kbd>←</kbd><kbd>→</kbd> 각도 0.5° · <kbd>Shift</kbd> 0.1°<br>
+    <kbd>↑</kbd><kbd>↓</kbd> 파워 5 · <kbd>Shift</kbd> 1<br>
+    <kbd>Space</kbd> 발사 · 탱크에서 <b>드래그</b>해도 조준된다
+  </div>
+
+  <h2>플레이어</h2>
+  <div id="cards"></div>
+
+  <h2>맵</h2>
+  <div class="row">
+    <button id="bNew" class="wide">새 맵 (시드 갱신)</button>
+  </div>
+  <div class="p"><label><span class="nm">시드</span><span class="vl" id="vSeed"></span></label>
+    <input type="range" id="sSeed" min="0" max="255" step="1"></div>
+  <div class="p"><label><span class="nm">스폰 간격</span><span class="vl" id="vSep"></span></label>
+    <input type="range" id="sSep" min="0" max="1800" step="20">
+    <div class="hint">0 = 1280px (맵 폭의 2/3). 사거리보다 크면 서로 못 닿는다 (B12)</div></div>
+  <table class="rd">
+    <tr><td>최대 사거리</td><td id="oRange">—</td></tr>
+    <tr><td>맵 폭 대비</td><td id="oPct">—</td></tr>
+  </table>
+
+  <h2>탄도 상수 <span style="color:#6E6478">simulation.md §8</span></h2>
+  <div class="p"><label><span class="nm">POWER_SCALE</span><span class="vl" id="vPS"></span></label>
+    <input type="range" id="sPS" min="256" max="640" step="16">
+    <div class="hint">최대 파워 45° 에서 맵 폭의 100% 가 목표 (B12). 624 가 실측 98.9%</div></div>
+  <div class="p"><label><span class="nm">GRAVITY</span><span class="vl" id="vG"></span></label>
+    <input type="range" id="sG" min="4" max="24" step="1">
+    <div class="hint">낮추면 체공이 길어져 바람 영향이 커진다</div></div>
+  <div class="p"><label><span class="nm">WIND_MAX</span><span class="vl" id="vWM"></span></label>
+    <input type="range" id="sWM" min="0" max="8" step="1">
+    <div class="hint">45° 편차 = 사거리 × WIND_MAX/GRAVITY. 6 이면 50% 로 바람이 지배한다</div></div>
+  <div class="p"><label><span class="nm">SUBSTEPS</span><span class="vl" id="vSub"></span></label>
+    <input type="range" id="sSub" min="1" max="64" step="1">
+    <div class="hint">붕괴 재생 속도. 시뮬 결과는 안 바뀐다 (terrain.md §3.4)</div></div>
+
+  <h2>지형 <span style="color:#6E6478">terrain.md §4</span></h2>
+  <div class="p"><label><span class="nm">SLIDE_CHANCE_SAND</span><span class="vl" id="vCS"></span></label>
+    <input type="range" id="sCS" min="0" max="256" step="1"></div>
+  <div class="p"><label><span class="nm">SLIDE_CHANCE_SOIL</span><span class="vl" id="vCL"></span></label>
+    <input type="range" id="sCL" min="0" max="256" step="1"></div>
+  <label class="chk"><input type="checkbox" id="cGate"><span>정적 게이트 <span style="color:#6E6478">(decisions.md A1)</span></span></label>
+  <label class="chk"><input type="checkbox" id="cBoth"><span>양방향 시도 <span style="color:#6E6478">(A2)</span></span></label>
+
+  <h2>표시</h2>
+  <label class="chk"><input type="checkbox" id="cTrail" checked><span>탄도 잔상</span></label>
+  <label class="chk"><input type="checkbox" id="cPredict"><span>궤적 미리보기 <span style="color:#6E6478">(치트. 감각 확인용)</span></span></label>
+  <label class="chk"><input type="checkbox" id="cWindPerTurn"><span>바람을 매 턴 갱신 <span style="color:#6E6478">(기본: 라운드마다)</span></span></label>
+
+  <div id="log">준비됨.</div>
+</aside>
+
+<main>
+  <div id="wrap"><div id="stage">
+    <canvas id="ter" width="960" height="540"></canvas>
+    <canvas id="ovl" width="960" height="540"></canvas>
+  </div></div>
+  <div id="bar">
+    <span><b>턴</b><span id="oTurn">1</span></span>
+    <span><b>차례</b><span id="oWho" class="big">—</span></span>
+    <span><b>각도</b><span id="oAngle" class="big">—</span></span>
+    <span><b>파워</b><span id="oPower" class="big">—</span></span>
+    <span><b>바람</b><span id="oWind" class="big">—</span></span>
+    <span><b>단계</b><span id="oPhase">조준</span></span>
+    <span><b>정착</b><span id="oSettle">—</span></span>
+    <span><b>fps</b><span id="oFps">—</span></span>
+  </div>
+</main>
+</div>
+
+<!-- [SIM] 지형 자동자 — 샌드박스와 같은 파일을 쓴다 -->
+<script src="../sandbox/automaton.js"></script>
+<script src="../sandbox/lab.js"></script>
+<!-- [SIM] 탄도 · 탱크 · 턴 해결 -->
+<script src="sim.js"></script>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   Phase 1 프로토타입 UI  [TOOL]
+
+   시뮬레이션은 automaton.js(지형) + sim.js(탄도·탱크)에 있다.
+   여기에는 렌더러와 조준 UI, 턴 루프만 둔다.
+
+   턴 흐름 (simulation.md §7):
+     AIM      조준 입력. 시뮬레이션 없음
+     RESOLVE  궤적 재생 (미리 계산된 경로를 60fps 로 보여준다)
+     SETTLE   폭발 카빙 → 연결성 → 자동자 정착 (terrain.md §6.1 루프)
+     APPLY    탱크 재배치, 낙하·매몰 피해, 사망 판정
+   ═══════════════════════════════════════════════════════════════════════════ */
+const T = window.TalusSim, L = window.TalusLab, P = window.TalusPhys;
+const W = T.W, H = T.H, N = T.N, grid = T.grid;
+const EMPTY = T.EMPTY;
+const CELL = P.CELL_SUBPX, CSH = P.CELL_SHIFT;
+
+const $ = (id) => document.getElementById(id);
+const logEl = $("log");
+function log(html) {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  logEl.insertBefore(d, logEl.firstChild);
+  while (logEl.childNodes.length > 50) logEl.removeChild(logEl.lastChild);
+}
+
+/* ══════════════════════ 게임 상태 ══════════════════════ */
+const G = {
+  phase: "AIM",
+  turnNo: 1,
+  roundNo: 0,
+  cur: 0,
+  wind: 0,
+  tanks: [],
+  trails: [],            // {slot, pts:[{x,y}], age}
+  shot: null,            // 재생 중인 궤적
+  shotTick: 0,
+  settleSteps: 0,
+  settleRounds: 0,
+  substeps: 26,
+  showTrail: true, showPredict: false, windPerTurn: false,
+  seed: 0x55,
+  sepPx: 0,              // 0 = 사거리에서 자동 파생. 슬라이더로 덮어쓸 수 있다
+};
+
+/* turnSeed = hash32(mapSeed, turnNo, 0, 0) — decisions.md B2 확정.
+   자동자 해시의 seed 다 (terrain.md §7.1). 서버 난수가 아니라 **파생값**이라
+   리플레이가 mapSeed + intents[] 만으로 재현된다. 턴마다 붕괴 세부가 달라진다. */
+function applyTurnSeed() {
+  T.CFG.seed = T.hash32(G.seed, G.turnNo, 0, 0);
+}
+
+/* 바람은 라운드마다 결정론적으로 파생한다 (game-design.md §9).
+   서버 난수가 아니라 파생값이어야 리플레이가 mapSeed+intents 로 재현된다 — decisions.md B3 */
+function deriveWind() {
+  const key = G.windPerTurn ? G.turnNo : G.roundNo;
+  const h = T.hash32(G.seed ^ 0x5715, key, 0, 0);
+  const span = P.CFG.windMax * 2 + 1;
+  G.wind = (h % span) - P.CFG.windMax;
+}
+
+/* 평지에서 최대 파워 45° 사거리를 실측한다 (px).
+   `POWER_SCALE`·`GRAVITY` 슬라이더를 움직이면 값이 바뀐다. */
+function measureMaxRange() {
+  return P.flatRangePx(450, 1000, 0);      // 평지 사거리. ballistics-check.mjs 와 같은 정의
+}
+
+/* 스폰 간격. decisions.md B12 는 "사거리를 맵 폭에 맞춘다"로 확정되었으므로
+   맵의 1/6·5/6 (간격 1280px = 맵 폭의 2/3) 에 앉힌다.
+   최대 사거리 1899px 이므로 맞히려면 파워 약 82% 가 필요해 위·아래로 여유가 남는다.
+
+   ⚠️ 사거리보다 간격이 크면 **두 탱크가 서로 닿지 않아 라운드가 끝나지 않는다.**
+   POWER_SCALE 을 낮추면 실제로 그렇게 되므로 아래에서 경고한다. */
+function spawnSeparation() {
+  return G.sepPx > 0 ? G.sepPx : 1280;
+}
+
+function newMap() {
+  T.CFG.seed = G.seed;              // 맵 생성은 mapSeed 로 (turnSeed 아님)
+  L.loadPreset("hills");
+  /* 정착을 먼저 돌려 생성 직후 저절로 무너지는 것을 없앤다 (decisions.md B1-6) */
+  L.settleHeadless(60000);
+  const maxRange = measureMaxRange();
+  const sep = spawnSeparation();
+  const midPx = 960;                                  // 맵 폭 1920px 의 중앙
+  G.tanks = [
+    P.makeTank(0, Math.round((midPx - sep / 2) * 16), "청록"),
+    P.makeTank(1, Math.round((midPx + sep / 2) * 16), "라임"),
+  ];
+  if (sep > maxRange) {
+    log(`<i>간격 ${sep}px > 최대 사거리 ${maxRange}px — 서로 닿지 않아 라운드가 안 끝난다 (B12)</i>`);
+  } else {
+    const needPow = Math.round(Math.sqrt(sep / maxRange) * 1000);
+    log(`간격 ${sep}px / 최대 사거리 ${maxRange}px → 명중에 파워 약 ${needPow} 필요`);
+  }
+  for (const tk of G.tanks) P.reseatTank(tk);
+  G.turnNo = 1; G.roundNo = 0; G.cur = 0;
+  applyTurnSeed();
+  G.trails.length = 0; G.shot = null;
+  G.phase = "AIM";
+  deriveWind();
+  renderAll = true;
+  syncAim(); drawCards();
+  log(`<em>새 맵</em> — 시드 0x${G.seed.toString(16).toUpperCase()} · 바람 ${G.wind >= 0 ? "+" : ""}${G.wind}`);
+}
+
+/* ══════════════════════ 턴 진행 ══════════════════════ */
+function fire() {
+  if (G.phase !== "AIM") return;
+  const tk = G.tanks[G.cur];
+  if (!tk.alive) { nextTurn(); return; }
+  const m = P.muzzle(tk, tk.angle10);
+  const s = P.simulateShot(m.x, m.y, tk.angle10, tk.power, G.wind, G.cur, G.tanks);
+  /* 궤적을 잔상용으로 복사한다 (버퍼는 다음 발사에 재사용된다) */
+  const pts = [];
+  for (let i = 0; i < s.n; i++) pts.push({ x: s.xs[i], y: s.ys[i] });
+  G.shot = { slot: G.cur, pts, hit: s.hit, hitX: s.hitX, hitY: s.hitY, hitTank: s.hitTank };
+  G.shotTick = 0;
+  G.phase = "RESOLVE";
+  $("bFire").disabled = true;
+  log(`${tk.name} 발사 — ${(tk.angle10 / 10).toFixed(1)}° / ${tk.power} / 바람 ${G.wind >= 0 ? "+" : ""}${G.wind}`);
+}
+
+function onImpact() {
+  const s = G.shot;
+  if (G.showTrail) {
+    G.trails.push({ slot: s.slot, pts: s.pts, age: 0 });
+    while (G.trails.length > 12) G.trails.shift();
+  }
+  if (s.hit === "void" || s.hit === "timeout") {
+    log(`<i>불발</i> — ${s.hit === "void" ? "화면 아래로 소멸" : "30초 초과"}`);
+    G.phase = "APPLY";
+    return;
+  }
+  /* 폭발: 피해를 먼저 전부 계산한 뒤 카빙한다 (simulation.md §5.2) */
+  const dmg = P.computeDamage(s.hitX, s.hitY, P.STANDARD, G.tanks);
+  const cx = s.hitX >> CSH, cy = s.hitY >> CSH;
+  const cv = T.carve(cx, cy, P.STANDARD.carveCells);
+  for (const d of dmg) {
+    const tk = G.tanks[d.idx];
+    tk.hp -= d.dmg;
+    log(`  ${tk.name} 피해 ${d.dmg} (거리 ${(d.dist / 16).toFixed(0)}px) → HP ${Math.max(0, tk.hp)}`);
+  }
+  if (cv.conv > 0) log(`  <em>연결성 검사</em> — ROCK→SCREE ${cv.conv.toLocaleString()}셀`);
+  G.settleSteps = 0; G.settleRounds = 0;
+  G.phase = "SETTLE";
+  renderAll = true;
+}
+
+/* terrain.md §6.1 — 연결성 검사 → 정착 → 재검사, 변환 0 까지 */
+function settleTick(budget) {
+  let moved = 0;
+  for (let k = 0; k < budget; k++) {
+    if (G.settleSteps >= 12000) { G.phase = "APPLY"; log("<i>MAX_SETTLE_STEPS 도달 — 강제 종료</i>"); return moved; }
+    const r = T.step();
+    G.settleSteps++; moved += r.moved;
+    if (r.mobile === 0) {
+      const conv = T.connectivity();
+      G.settleRounds++;
+      if (conv > 0 && G.settleRounds < 8) {
+        log(`  정착 후 재검사 ${G.settleRounds} — ROCK→SCREE ${conv.toLocaleString()}셀, 정착 재개`);
+        continue;                          // step 은 리셋하지 않는다 (§7.1)
+      }
+      G.phase = "APPLY";
+      return moved;
+    }
+  }
+  return moved;
+}
+
+function applyPhase() {
+  for (const tk of G.tanks) {
+    if (!tk.alive) continue;
+    const fall = P.reseatTank(tk);
+    if (fall < 0) { tk.hp = 0; log(`<i>${tk.name} 화면 밖 이탈 — 즉사</i>`); }
+    else if (fall > 0) {
+      const fd = P.fallDamage(fall);
+      if (fd > 0) { tk.hp -= fd; log(`  ${tk.name} ${fall}px 낙하 → 피해 ${fd}`); }
+      else if (fall > 4) log(`  ${tk.name} ${fall}px 낙하 (무피해)`);
+    }
+    const bf = P.buriedFraction(tk);
+    tk.buried = bf >= P.CFG.burialPermille;
+    if (tk.buried) { tk.hp -= P.CFG.burialDamage; log(`  <i>${tk.name} 매몰</i> (${(bf / 10).toFixed(0)}%) → 피해 ${P.CFG.burialDamage}`); }
+    if (tk.hp <= 0) { tk.hp = 0; tk.alive = false; log(`<i>${tk.name} 파괴</i>`); }
+  }
+  drawCards();
+  const alive = G.tanks.filter((t) => t.alive);
+  if (alive.length <= 1) {
+    G.phase = "OVER";
+    log(alive.length === 1 ? `<b>${alive[0].name} 승리</b>` : "<b>무승부 — 전멸</b>");
+    $("bFire").disabled = true;
+    return;
+  }
+  nextTurn();
+}
+
+function nextTurn() {
+  for (const tr of G.trails) tr.age++;
+  G.turnNo++;
+  let guard = 0;
+  do { G.cur = (G.cur + 1) % G.tanks.length; } while (!G.tanks[G.cur].alive && guard++ < 8);
+  if (G.cur === 0) G.roundNo++;
+  applyTurnSeed();
+  deriveWind();
+  G.phase = "AIM";
+  G.shot = null;
+  $("bFire").disabled = false;
+  syncAim(); drawCards();
+  renderAll = true;
+}
+
+/* ══════════════════════ 렌더 ══════════════════════ */
+const ter = $("ter"), tctx = ter.getContext("2d", { alpha: false });
+const ovl = $("ovl"), octx = ovl.getContext("2d");
+const img = tctx.createImageData(W, H), px = new Uint32Array(img.data.buffer);
+
+const hexToRgb = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+const c255 = (v) => v < 0 ? 0 : (v > 255 ? 255 : v | 0);
+const abgr = (r, g, b) => ((255 << 24) | (c255(b) << 16) | (c255(g) << 8) | c255(r)) >>> 0;
+const shade = (s, k) => { const c = hexToRgb(s); return abgr(c[0] * k, c[1] * k, c[2] * k); };
+
+const MAT_HEX = [null, "#C9A56B", "#A6472E", "#8A8175", "#55606B", "#2C3239"];
+const C_BASE = new Uint32Array(6), C_LIT = new Uint32Array(6), C_RIM = new Uint32Array(6);
+for (let m = 1; m <= 5; m++) {
+  C_BASE[m] = shade(MAT_HEX[m], 0.78);
+  C_LIT[m] = shade(MAT_HEX[m], 1.28);
+  C_RIM[m] = shade(MAT_HEX[m], 1.02);
+}
+const skyRow = new Uint32Array(H);
+(function () {
+  const z = hexToRgb("#3A2E4A"), m = hexToRgb("#7E5A50"), o = hexToRgb("#D99A5B");
+  for (let y = 0; y < H; y++) {
+    const t = y / (H - 1);
+    let r, g, b;
+    if (t < 0.62) { const u = t / 0.62; r = z[0] + (m[0] - z[0]) * u; g = z[1] + (m[1] - z[1]) * u; b = z[2] + (m[2] - z[2]) * u; }
+    else { const u = (t - 0.62) / 0.38; r = m[0] + (o[0] - m[0]) * u; g = m[1] + (o[1] - m[1]) * u; b = m[2] + (o[2] - m[2]) * u; }
+    skyRow[y] = abgr(r * 0.6, g * 0.6, b * 0.6);
+  }
+})();
+
+let renderAll = true;
+const dirtyRow = new Uint8Array(H);
+
+function paintRow(y) {
+  const base = y * W, sky = skyRow[y], up = y > 0 ? base - W : -1;
+  for (let x = 0; x < W; x++) {
+    const i = base + x, m = grid[i];
+    if (m === EMPTY) { px[i] = sky; continue; }
+    if (up < 0 || grid[up + x] === EMPTY) px[i] = C_LIT[m];
+    else if (x > 0 && grid[up + x - 1] === EMPTY) px[i] = C_RIM[m];
+    else px[i] = C_BASE[m];
+  }
+}
+function renderTerrain() {
+  const mN = T.getMovedCount(), mRow = T.moved.row, mDRow = T.moved.drow;
+  if (renderAll) {
+    for (let y = 0; y < H; y++) paintRow(y);
+    tctx.putImageData(img, 0, 0);
+    renderAll = false;
+  } else if (mN > 0) {
+    dirtyRow.fill(0);
+    let lo = H, hi = -1;
+    for (let i = 0; i < mN; i++) {
+      let a = mRow[i] - 1, b = mDRow[i] + 2;
+      if (a < 0) a = 0; if (b > H - 1) b = H - 1;
+      for (let y = a; y <= b; y++) dirtyRow[y] = 1;
+    }
+    for (let y = 0; y < H; y++) if (dirtyRow[y]) { paintRow(y); if (y < lo) lo = y; if (y > hi) hi = y; }
+    if (hi >= lo) tctx.putImageData(img, 0, 0, 0, lo, W, hi - lo + 1);
+  }
+}
+
+const TEAM = ["#3DDCFF", "#B4FF3D"];
+const sx = (xs) => xs / CELL;            // subpx → 셀(=캔버스 픽셀). 표시용이므로 float 허용
+const sy = (ys) => ys / CELL;
+
+function drawOverlay() {
+  octx.clearRect(0, 0, W, H);
+
+  /* 탄도 잔상 — 지난 턴들의 궤적이 팀색으로 옅어진다 (rendering.md §1.5) */
+  if (G.showTrail) {
+    for (const tr of G.trails) {
+      const a = Math.max(0.06, 0.55 - tr.age * 0.06);
+      octx.strokeStyle = TEAM[tr.slot]; octx.globalAlpha = a; octx.lineWidth = 1;
+      octx.beginPath();
+      for (let i = 0; i < tr.pts.length; i++) {
+        const X = sx(tr.pts[i].x), Y = sy(tr.pts[i].y);
+        i === 0 ? octx.moveTo(X, Y) : octx.lineTo(X, Y);
+      }
+      octx.stroke(); octx.globalAlpha = 1;
+    }
+  }
+
+  /* 궤적 미리보기 (치트 토글) */
+  if (G.showPredict && G.phase === "AIM") {
+    const tk = G.tanks[G.cur];
+    const m = P.muzzle(tk, tk.angle10);
+    const s = P.simulateShot(m.x, m.y, tk.angle10, tk.power, G.wind, G.cur, G.tanks);
+    octx.strokeStyle = TEAM[G.cur]; octx.globalAlpha = .28;
+    octx.setLineDash([3, 5]); octx.lineWidth = 1; octx.beginPath();
+    for (let i = 0; i < s.n; i++) {
+      const X = sx(s.xs[i]), Y = sy(s.ys[i]);
+      i === 0 ? octx.moveTo(X, Y) : octx.lineTo(X, Y);
+    }
+    octx.stroke(); octx.setLineDash([]); octx.globalAlpha = 1;
+  }
+
+  /* 탱크 */
+  for (let i = 0; i < G.tanks.length; i++) {
+    const tk = G.tanks[i];
+    const X = sx(tk.x), Y = sy(tk.y), w = P.TANK_W / CELL, h = P.TANK_H / CELL;
+    octx.globalAlpha = tk.alive ? 1 : .25;
+    /* 본체는 어둡게, 팀색은 액센트만 (rendering.md §9 미결 항목의 잠정 표현) */
+    octx.fillStyle = "#1D1A22";
+    octx.fillRect(X - w / 2, Y - h, w, h);
+    octx.fillStyle = TEAM[i];
+    octx.fillRect(X - w / 2, Y - h, w, 2);
+    /* 팀별 도형 마커 — 색만으로 구분되게 두지 않는다 (rendering.md §7.1) */
+    octx.beginPath();
+    if (i === 0) octx.arc(X, Y - h - 6, 2.6, 0, 6.2832);
+    else { octx.moveTo(X, Y - h - 9); octx.lineTo(X + 3, Y - h - 4); octx.lineTo(X - 3, Y - h - 4); octx.closePath(); }
+    octx.fill();
+    if (tk.buried) { octx.strokeStyle = "#FF3D9E"; octx.lineWidth = 1; octx.strokeRect(X - w / 2 - 1, Y - h - 1, w + 2, h + 2); }
+    /* 포신 */
+    if (tk.alive) {
+      const m = P.muzzle(tk, tk.angle10);
+      octx.strokeStyle = i === G.cur && G.phase === "AIM" ? "#E8DFD2" : TEAM[i];
+      octx.lineWidth = 1.6; octx.beginPath();
+      octx.moveTo(X, Y - h); octx.lineTo(sx(m.x), sy(m.y)); octx.stroke();
+    }
+    octx.globalAlpha = 1;
+  }
+
+  /* 비행 중인 포탄 */
+  if (G.phase === "RESOLVE" && G.shot) {
+    const i = Math.min(G.shotTick, G.shot.pts.length - 1);
+    const p = G.shot.pts[i];
+    octx.strokeStyle = TEAM[G.shot.slot]; octx.lineWidth = 1.4; octx.globalAlpha = .8;
+    octx.beginPath();
+    for (let k = 0; k <= i; k++) {
+      const X = sx(G.shot.pts[k].x), Y = sy(G.shot.pts[k].y);
+      k === 0 ? octx.moveTo(X, Y) : octx.lineTo(X, Y);
+    }
+    octx.stroke(); octx.globalAlpha = 1;
+    octx.fillStyle = "#FFF4E0";
+    octx.beginPath(); octx.arc(sx(p.x), sy(p.y), 2, 0, 6.2832); octx.fill();
+  }
+
+  /* 조준 다이얼 — 조준 중에만 탱크 주변에 (rendering.md §7) */
+  if (G.phase === "AIM") {
+    const tk = G.tanks[G.cur];
+    if (tk.alive) {
+      const X = sx(tk.x), Y = sy(tk.y) - P.TANK_H / CELL;
+      octx.strokeStyle = "rgba(232,223,210,.22)"; octx.lineWidth = 1;
+      octx.beginPath(); octx.arc(X, Y, 34, Math.PI, 0); octx.stroke();
+      const rad = (tk.angle10 / 10) * Math.PI / 180;
+      octx.strokeStyle = TEAM[G.cur]; octx.lineWidth = 2;
+      octx.beginPath(); octx.moveTo(X, Y);
+      octx.lineTo(X + Math.cos(rad) * 34, Y - Math.sin(rad) * 34); octx.stroke();
+    }
+  }
+
+  /* 바람 게이지 — 상단 중앙 (rendering.md §7) */
+  const cxg = W / 2, wy = 16, half = 70;
+  octx.strokeStyle = "rgba(232,223,210,.2)"; octx.lineWidth = 1;
+  octx.beginPath(); octx.moveTo(cxg - half, wy); octx.lineTo(cxg + half, wy); octx.stroke();
+  octx.beginPath(); octx.moveTo(cxg, wy - 4); octx.lineTo(cxg, wy + 4); octx.stroke();
+  const wmax = Math.max(1, P.CFG.windMax);
+  const wlen = (G.wind / wmax) * half;
+  octx.strokeStyle = Math.abs(G.wind) > wmax * 0.6 ? "#FF3D9E" : "#D99A5B";
+  octx.lineWidth = 3;
+  octx.beginPath(); octx.moveTo(cxg, wy); octx.lineTo(cxg + wlen, wy); octx.stroke();
+}
+
+/* ══════════════════════ 조준 입력 ══════════════════════ */
+const stage = $("stage");
+let dragging = false;
+
+function toSub(ev) {
+  const r = ter.getBoundingClientRect();
+  return {
+    x: Math.round((ev.clientX - r.left) / r.width * W * CELL),
+    y: Math.round((ev.clientY - r.top) / r.height * H * CELL),
+  };
+}
+/* 드래그 조준: 탱크에서 끌어당긴 벡터의 반대 방향으로 쏜다 (당겨 쏘는 감각) */
+function aimFromDrag(pt) {
+  const tk = G.tanks[G.cur];
+  const dx = tk.x - pt.x, dy = (tk.y - P.TANK_H) - pt.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 8) return;
+  let deg = Math.atan2(dy, dx) * 180 / Math.PI;   // 표시용 계산이라 float 허용
+  if (deg < 0) deg += 360;
+  if (deg > 180) deg = deg < 270 ? 180 : 0;
+  tk.angle10 = Math.max(0, Math.min(1800, Math.round(deg * 10)));
+  tk.power = Math.max(0, Math.min(1000, Math.round(dist / (150 * CELL) * 1000)));
+  syncAim();
+}
+stage.addEventListener("pointerdown", (e) => {
+  if (G.phase !== "AIM") return;
+  stage.setPointerCapture(e.pointerId);
+  dragging = true; aimFromDrag(toSub(e));
+});
+stage.addEventListener("pointermove", (e) => { if (dragging) aimFromDrag(toSub(e)); });
+stage.addEventListener("pointerup", () => { dragging = false; });
+
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  if (G.phase !== "AIM") { if (e.key === " ") e.preventDefault(); return; }
+  const tk = G.tanks[G.cur];
+  const fine = e.shiftKey;
+  let used = true;
+  switch (e.key) {
+    case "ArrowLeft":  tk.angle10 = Math.min(1800, tk.angle10 + (fine ? 1 : 5)); break;
+    case "ArrowRight": tk.angle10 = Math.max(0, tk.angle10 - (fine ? 1 : 5)); break;
+    case "ArrowUp":    tk.power = Math.min(1000, tk.power + (fine ? 1 : 5)); break;
+    case "ArrowDown":  tk.power = Math.max(0, tk.power - (fine ? 1 : 5)); break;
+    case " ":          fire(); break;
+    default: used = false;
+  }
+  if (used) { e.preventDefault(); syncAim(); }
+});
+
+function syncAim() {
+  const tk = G.tanks[G.cur];
+  if (!tk) return;
+  $("iAngle").value = (tk.angle10 / 10).toFixed(1);
+  $("iPower").value = tk.power;
+  $("oAngle").textContent = (tk.angle10 / 10).toFixed(1) + "°";
+  $("oPower").textContent = tk.power;
+  $("oWho").textContent = tk.name;
+  $("oWho").style.color = TEAM[G.cur];
+  $("oWind").textContent = (G.wind >= 0 ? "+" : "") + G.wind;
+  $("oTurn").textContent = G.turnNo;
+}
+$("iAngle").addEventListener("input", (e) => {
+  const v = parseFloat(e.target.value);
+  if (!isNaN(v)) { G.tanks[G.cur].angle10 = Math.max(0, Math.min(1800, Math.round(v * 10))); syncAim(); }
+});
+$("iPower").addEventListener("input", (e) => {
+  const v = parseInt(e.target.value, 10);
+  if (!isNaN(v)) { G.tanks[G.cur].power = Math.max(0, Math.min(1000, v)); syncAim(); }
+});
+$("bFire").onclick = fire;
+
+function drawCards() {
+  const box = $("cards");
+  box.innerHTML = "";
+  for (let i = 0; i < G.tanks.length; i++) {
+    const tk = G.tanks[i];
+    const d = document.createElement("div");
+    d.className = "pcard" + (i === G.cur && G.phase === "AIM" ? " turn" : "") + (tk.alive ? "" : " dead");
+    d.innerHTML = `<div class="nm"><b style="color:${TEAM[i]}">${tk.name}</b>`
+      + `<span style="font-family:ui-monospace">${tk.hp}${tk.buried ? " 매몰" : ""}</span></div>`
+      + `<div class="hpbar"><i style="width:${tk.hp}%;background:${tk.hp > 40 ? "#B4FF3D" : "#FF3D9E"}"></i></div>`;
+    box.appendChild(d);
+  }
+}
+
+/* ══════════════════════ 슬라이더 ══════════════════════ */
+const syncers = [];
+function bind(sid, vid, get, set, fmt) {
+  const s = $(sid), v = $(vid);
+  const sync = () => { s.value = get(); v.textContent = fmt(get()); };
+  s.addEventListener("input", () => { set(+s.value); v.textContent = fmt(+s.value); });
+  syncers.push(sync); sync();
+}
+const q8 = (v) => `${v}/256 · ${(v / 256 * 100).toFixed(0)}%`;
+bind("sSeed", "vSeed", () => G.seed, (v) => G.seed = v, (v) => "0x" + v.toString(16).toUpperCase().padStart(2, "0"));
+bind("sSep", "vSep", () => G.sepPx, (v) => G.sepPx = v, (v) => v === 0 ? "자동" : v + " px");
+bind("sPS", "vPS", () => P.CFG.powerScale, (v) => { P.CFG.powerScale = v; showRange(); }, String);
+bind("sG", "vG", () => P.CFG.gravity, (v) => { P.CFG.gravity = v; showRange(); }, String);
+
+/* 사거리 계측을 상시 노출한다 — Phase 1 완료 조건이 이 숫자로 판정된다 */
+function showRange() {
+  const r = measureMaxRange();
+  $("oRange").textContent = r + " px";
+  const pct = r / 1920 * 100;
+  $("oPct").textContent = pct.toFixed(1) + "%";
+  $("oPct").style.color = Math.abs(pct - 100) <= 5 ? "var(--ok)" : "var(--warn)";
+}
+bind("sWM", "vWM", () => P.CFG.windMax, (v) => { P.CFG.windMax = v; deriveWind(); syncAim(); }, String);
+bind("sSub", "vSub", () => G.substeps, (v) => G.substeps = v, String);
+bind("sCS", "vCS", () => T.CFG.slideSandQ8, (v) => T.CFG.slideSandQ8 = v, q8);
+bind("sCL", "vCL", () => T.CFG.slideSoilQ8, (v) => T.CFG.slideSoilQ8 = v, q8);
+
+$("bNew").onclick = () => newMap();
+$("cGate").onchange = (e) => T.CFG.slideGateStatic = e.target.checked;
+$("cBoth").onchange = (e) => T.CFG.bothDirections = e.target.checked;
+$("cTrail").onchange = (e) => { G.showTrail = e.target.checked; };
+$("cPredict").onchange = (e) => { G.showPredict = e.target.checked; };
+$("cWindPerTurn").onchange = (e) => { G.windPerTurn = e.target.checked; deriveWind(); syncAim(); };
+
+/* ══════════════════════ 메인 루프 ══════════════════════ */
+let fpsT = performance.now(), fpsN = 0;
+const PHASE_KO = { AIM: "조준", RESOLVE: "비행", SETTLE: "붕괴", APPLY: "정산", OVER: "종료" };
+
+function frame() {
+  if (G.phase === "RESOLVE") {
+    G.shotTick += 2;                                  // 2틱/프레임 = 30fps 궤적. 눈에 편하다
+    if (G.shotTick >= G.shot.pts.length) onImpact();
+  } else if (G.phase === "SETTLE") {
+    settleTick(G.substeps);
+  } else if (G.phase === "APPLY") {
+    applyPhase();
+    renderAll = true;
+  }
+
+  renderTerrain();
+  drawOverlay();
+
+  fpsN++;
+  const now = performance.now();
+  if (now - fpsT > 400) {
+    $("oFps").textContent = (fpsN * 1000 / (now - fpsT)).toFixed(0);
+    $("oPhase").textContent = PHASE_KO[G.phase] || G.phase;
+    $("oSettle").textContent = G.settleSteps ? G.settleSteps.toLocaleString() + "스텝" : "—";
+    fpsT = now; fpsN = 0;
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ══════════════════════ 부팅 ══════════════════════ */
+newMap();
+showRange();
+log("<em>Phase 1 프로토타입</em> — 조준하고 쏜다. 지형이 무너지면 다음 조준이 달라진다.\n"
+  + "완료 조건: 30분을 계속 쏘게 되는가 (roadmap.md Phase 1)");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

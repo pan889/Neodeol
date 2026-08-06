@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Talus — 모래 자동자 샌드박스 (Phase 0)</title>
+<style>
+  /* 팔레트 출처: docs/rendering.md §1.3 */
+  :root{
+    --ink:#E8DFD2;
+    --panel:#1A1720; --panel2:#231E2B; --line:#3A3243;
+    --accent:#3DDCFF; --warn:#FF3D9E; --ok:#B4FF3D;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  html,body{height:100%}
+  body{
+    background:#120F17; color:var(--ink);
+    font-family:ui-sans-serif,-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif;
+    font-size:12px; overflow:hidden;
+  }
+  #app{display:grid; grid-template-columns:256px minmax(0,1fr) 276px; height:100vh; gap:1px; background:var(--line)}
+  aside{background:var(--panel); overflow-y:auto; padding:10px 10px 40px}
+  aside::-webkit-scrollbar{width:8px} aside::-webkit-scrollbar-thumb{background:var(--line)}
+  main{background:#0C0A11; display:flex; flex-direction:column; min-width:0}
+
+  h1{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--accent)}
+  h1 small{display:block; letter-spacing:0; text-transform:none; color:#8A8175; font-size:10px; margin-top:3px; line-height:1.5}
+  h2{
+    font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:#9A8F7F;
+    margin:14px 0 6px; padding-bottom:4px; border-bottom:1px solid var(--line);
+  }
+
+  .row{display:flex; gap:4px; flex-wrap:wrap; margin-bottom:6px}
+  button{
+    font:inherit; font-size:11px; color:var(--ink); background:var(--panel2);
+    border:1px solid var(--line); border-radius:3px; padding:5px 8px; cursor:pointer; flex:1 1 auto;
+    white-space:nowrap;
+  }
+  button:hover{background:#2E2738; border-color:#4C4258}
+  button.on{background:var(--accent); border-color:var(--accent); color:#0C0A11; font-weight:600}
+  button.wide{flex-basis:100%}
+
+  .mat{display:grid; grid-template-columns:repeat(3,1fr); gap:4px; margin-bottom:6px}
+  .mat button{position:relative; padding-left:20px; text-align:left; flex:none; overflow:hidden}
+  .mat button i{position:absolute; left:5px; top:50%; transform:translateY(-50%); width:10px; height:10px; border-radius:2px; border:1px solid #0006}
+
+  .p{margin-bottom:7px}
+  .p label{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px; gap:6px}
+  .p .nm{color:#B8AC9A; font-size:10.5px; letter-spacing:.03em}
+  .p .vl{font-family:ui-monospace,"Martian Mono","IBM Plex Mono",monospace; font-variant-numeric:tabular-nums; font-size:11px}
+  .p input[type=range]{width:100%; height:14px; -webkit-appearance:none; background:transparent; cursor:pointer}
+  .p input[type=range]::-webkit-slider-runnable-track{height:3px; background:var(--line); border-radius:2px}
+  .p input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:11px; height:11px; margin-top:-4px; border-radius:50%; background:#D99A5B}
+  .p .hint{color:#6E6478; font-size:9.5px; margin-top:1px; line-height:1.35}
+
+  .chk{display:flex; align-items:flex-start; gap:6px; margin-bottom:6px; color:#B8AC9A; cursor:pointer; font-size:10.5px; line-height:1.4}
+  .chk input{accent-color:var(--accent); margin-top:1px; flex:none}
+
+  #wrap{flex:1; display:flex; align-items:center; justify-content:center; padding:8px; min-height:0}
+  #stage{position:relative; aspect-ratio:16/9; width:1280px; max-width:100%; max-height:100%;
+         box-shadow:0 0 0 1px var(--line), 0 18px 50px #0009; cursor:crosshair; touch-action:none}
+  canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
+  #ovl{pointer-events:none}
+
+  #bar{
+    display:flex; gap:13px; align-items:center; padding:6px 12px; border-top:1px solid var(--line);
+    background:var(--panel); font-family:ui-monospace,"Martian Mono",monospace; font-variant-numeric:tabular-nums;
+    font-size:11px; flex-wrap:wrap;
+  }
+  #bar b{color:#8A8175; font-weight:400; letter-spacing:.08em; text-transform:uppercase; font-size:9.5px; margin-right:4px}
+
+  table.rd{width:100%; border-collapse:collapse; font-family:ui-monospace,"Martian Mono",monospace; font-variant-numeric:tabular-nums; font-size:11px}
+  table.rd td{padding:2.5px 0; vertical-align:baseline}
+  table.rd td:first-child{color:#8A8175; letter-spacing:.02em}
+  table.rd td:last-child{text-align:right}
+  .big{font-size:15px}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .dim{color:#6E6478} .acc{color:var(--accent)}
+
+  #log{
+    margin-top:6px; font-family:ui-monospace,"Martian Mono",monospace; font-size:10px; line-height:1.5;
+    color:#9A8F7F; max-height:200px; overflow-y:auto; background:#15121C; border:1px solid var(--line);
+    border-radius:3px; padding:6px; white-space:pre-wrap; word-break:break-word;
+  }
+  #log b{color:var(--ok); font-weight:400}
+  #log i{color:var(--warn); font-style:normal}
+  #log em{color:var(--accent); font-style:normal}
+
+  .note{color:#6E6478; font-size:9.5px; line-height:1.5; margin-top:6px}
+  .note b{color:#9A8F7F; font-weight:600}
+  kbd{background:var(--panel2); border:1px solid var(--line); border-bottom-width:2px; border-radius:3px; padding:0 3px; font-family:ui-monospace,monospace; font-size:9.5px; color:#B8AC9A}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ══════════════ 왼쪽: 편집 + 상수 ══════════════ -->
+<aside>
+  <h1>Talus Sandbox<small>Phase 0 — 모래 붕괴 자동자 튜닝<br>docs/terrain.md §3 · §4</small></h1>
+
+  <h2>시뮬레이션</h2>
+  <div class="row">
+    <button id="bPlay">▶ 재생</button>
+    <button id="bStep">▶| 1스텝</button>
+  </div>
+  <div class="row"><button id="bSettle" class="wide">정착까지 즉시 계산 (렌더 없이)</button></div>
+
+  <h2>도구</h2>
+  <div class="row" id="tools">
+    <button data-tool="draw" class="on">그리기</button>
+    <button data-tool="dig">파기</button>
+    <button data-tool="blast">폭발</button>
+  </div>
+  <div class="mat" id="mats"></div>
+  <div class="p"><label><span class="nm">브러시 반경</span><span class="vl" id="vBrush"></span></label>
+    <input type="range" id="sBrush" min="1" max="60" step="1"></div>
+  <label class="chk"><input type="checkbox" id="cEraseBed"><span>파기가 BEDROCK도 지움 <span class="dim">(편집 전용)</span></span></label>
+
+  <h2>지형 프리셋</h2>
+  <div class="row" id="presets">
+    <button data-pre="layers">지층</button>
+    <button data-pre="hills">언덕</button>
+    <button data-pre="arch">아치</button>
+    <button data-pre="overhang">오버행</button>
+    <button data-pre="flat">평지</button>
+    <button data-pre="empty">비우기</button>
+  </div>
+  <div class="row"><button data-pre="collapse" class="wide">대형 붕괴 무대 준비 <span class="dim">(1/4 화면)</span></button></div>
+  <div class="row"><button id="bCollapseGo" class="wide">↓ 지지 다리 파괴 → 붕괴 계측</button></div>
+  <div class="p"><label><span class="nm">시드</span><span class="vl" id="vSeed"></span></label>
+    <input type="range" id="sSeed" min="0" max="255" step="1">
+    <div class="hint">프리셋 생성 + 자동자 해시 시드 (§7.1)</div></div>
+
+  <h2>자동자 상수 <span class="dim">§4</span></h2>
+  <div class="p"><label><span class="nm">SUBSTEPS</span><span class="vl" id="vSub"></span></label>
+    <input type="range" id="sSub" min="1" max="64" step="1">
+    <div class="hint">렌더 1프레임당 자동자 스텝 수 (§3.3).
+      실측: 반경 40 폭발이 2,430스텝 걸린다 → 4면 10초, 14면 3초</div></div>
+  <div class="p"><label><span class="nm">SLIDE_CHANCE_SAND</span><span class="vl" id="vCS"></span></label>
+    <input type="range" id="sCS" min="0" max="256" step="1"></div>
+  <div class="p"><label><span class="nm">SLIDE_CHANCE_SOIL</span><span class="vl" id="vCL"></span></label>
+    <input type="range" id="sCL" min="0" max="256" step="1"></div>
+  <label class="chk"><input type="checkbox" id="cGate"><span><b>정적 게이트</b> — 규칙 3 확률에서 step 을 뺀다<br>
+    <span class="dim">끄면(문서 §7.1 그대로) slideChance 가 안식각을 못 바꾸고 속도만 바꾼다.
+    켜면 44.2°~26.6° 사이가 연속 조절된다. 미결 항목.</span></span></label>
+  <label class="chk"><input type="checkbox" id="cBoth"><span><b>양방향 시도</b> — 고른 방향이 막히면 반대쪽도<br>
+    <span class="dim">문서 §3.1 이 명시하지 않은 부분. 켜면 유동이 약 2배 빨라진다. 미결 항목.</span></span></label>
+  <div class="p"><label><span class="nm">MAX_SETTLE_STEPS</span><span class="vl" id="vMax"></span></label>
+    <input type="range" id="sMax" min="200" max="40000" step="200">
+    <div class="hint">§5.2 상한. 실측: 반경 80 폭발이 9,335스텝. 600은 부족하다</div></div>
+
+  <h2>폭발 <span class="dim">§8</span></h2>
+  <div class="p"><label><span class="nm">반경</span><span class="vl" id="vRad"></span></label>
+    <input type="range" id="sRad" min="4" max="160" step="1"></div>
+  <div class="p"><label><span class="nm">SAND 저항</span><span class="vl" id="vRS"></span></label>
+    <input type="range" id="sRS" min="0" max="256" step="4"></div>
+  <div class="p"><label><span class="nm">SOIL 저항</span><span class="vl" id="vRL"></span></label>
+    <input type="range" id="sRL" min="0" max="256" step="4"></div>
+  <div class="p"><label><span class="nm">SCREE 저항</span><span class="vl" id="vRC"></span></label>
+    <input type="range" id="sRC" min="0" max="256" step="4"></div>
+  <div class="p"><label><span class="nm">ROCK 저항</span><span class="vl" id="vRR"></span></label>
+    <input type="range" id="sRR" min="0" max="256" step="4">
+    <div class="hint">유효반경 = (반경 × 저항) &gt;&gt; 8. 작을수록 단단하다</div></div>
+
+  <h2>표시</h2>
+  <label class="chk"><input type="checkbox" id="cMoved" checked><span>이동한 셀 강조</span></label>
+  <label class="chk"><input type="checkbox" id="cActive"><span>활성 행 표시 <span class="dim">(§5.1)</span></span></label>
+  <label class="chk"><input type="checkbox" id="cCompress" checked><span>시간 압축 <span class="dim">(§5.2, 곡선 미확정)</span></span></label>
+
+  <div class="note">
+    <kbd>Space</kbd> 재생/정지 · <kbd>S</kbd> 1스텝 · <kbd>E</kbd> 커서에 폭발<br>
+    <kbd>1</kbd>~<kbd>5</kbd> 재질 · <kbd>D</kbd> 파기 · <kbd>B</kbd> 그리기 · <kbd>R</kbd> 프리셋 재생성<br>
+    <kbd>[</kbd><kbd>]</kbd> 브러시 크기
+  </div>
+</aside>
+
+<!-- ══════════════ 가운데: 캔버스 ══════════════ -->
+<main>
+  <div id="wrap"><div id="stage">
+    <canvas id="ter" width="960" height="540"></canvas>
+    <canvas id="ovl" width="960" height="540"></canvas>
+  </div></div>
+  <div id="bar">
+    <span><b>fps</b><span id="oFps">—</span></span>
+    <span><b>sim</b><span id="oSim">—</span></span>
+    <span><b>render</b><span id="oRnd">—</span></span>
+    <span><b>substep</b><span id="oSub">—</span></span>
+    <span><b>이동</b><span id="oMoved">—</span></span>
+    <span><b>가동</b><span id="oMobile">—</span></span>
+    <span><b>활성행</b><span id="oAct">—</span></span>
+    <span><b>step</b><span id="oStep">—</span></span>
+    <span><b>커서</b><span id="oCur">—</span></span>
+  </div>
+</main>
+
+<!-- ══════════════ 오른쪽: 계측 ══════════════ -->
+<aside>
+  <h2>정착 <span class="dim">§5.2</span></h2>
+  <table class="rd">
+    <tr><td>상태</td><td id="oState">—</td></tr>
+    <tr><td>진행 스텝</td><td id="oCurStep">0</td></tr>
+    <tr><td>정착 스텝</td><td class="big" id="oSetStep">—</td></tr>
+    <tr><td>정착 벽시계</td><td class="big" id="oSetMs">—</td></tr>
+    <tr><td>순수 sim 시간</td><td id="oSetSim">—</td></tr>
+    <tr><td>이동 셀 누적</td><td id="oSetTot">—</td></tr>
+  </table>
+  <div class="note">
+    정착 판정은 <b>이동 셀 0</b> 이 아니라 <b>이동 가능한 셀 0</b> 이다.
+    전자는 확률 게이트에 막힌 스텝을 정착으로 오인해 더미가 사면 중간에 얼어붙는다.
+  </div>
+
+  <h2>안식각 <span class="dim">§4</span></h2>
+  <div class="p"><label><span class="nm">시험 더미 셀 수</span><span class="vl" id="vPile"></span></label>
+    <input type="range" id="sPile" min="4000" max="90000" step="1000">
+    <div class="hint">기둥으로 쌓아 무너뜨린 뒤 사면 각도를 회귀로 실측한다</div></div>
+  <div class="row"><button id="bRepose" class="wide">더미 쌓기 → 자동 측정</button></div>
+  <div class="row"><button id="bMeasure" class="wide">현재 지형 측정</button></div>
+  <table class="rd">
+    <tr><td>좌측 사면</td><td id="oAngL">—</td></tr>
+    <tr><td>우측 사면</td><td id="oAngR">—</td></tr>
+    <tr><td>평균</td><td class="big acc" id="oAngM">—</td></tr>
+    <tr><td>더미 높이</td><td id="oPileH">—</td></tr>
+    <tr><td>최대 열간 낙차</td><td id="oDrop">—</td></tr>
+  </table>
+  <div class="note">규칙 2 만 쓰면 열간 낙차가 1 을 넘을 수 없다 → 45° 상한.
+    <b>실측: SCREE 44.2° / SAND 26.6°</b> (문서 주장 45° / 26.5°)</div>
+
+  <h2>구조 붕괴 <span class="dim">§6</span></h2>
+  <div class="row"><button id="bConn" class="wide">연결성 검사 실행</button></div>
+  <table class="rd">
+    <tr><td>ROCK → SCREE</td><td id="oConv">—</td></tr>
+    <tr><td>검사 소요</td><td id="oConnMs">—</td></tr>
+  </table>
+
+  <h2>결정론 자기검증 <span class="dim">§3 · §7</span></h2>
+  <div class="row"><button id="bRepro" class="wide">재현성 — 동일 입력 2회</button></div>
+  <div class="row"><button id="bOrder" class="wide">순서 독립성 — 절대 규칙 3</button></div>
+  <div class="row"><button id="bTie" class="wide">우선순위 동점 검출</button></div>
+  <div class="row"><button id="bMob" class="wide">활성 행 무결성</button></div>
+  <div class="row"><button id="bHash" class="wide">해시 품질</button></div>
+  <div class="row"><button id="bAll" class="wide">전부 실행</button></div>
+  <div class="row"><button id="bSum">체크섬</button><button id="bMass">질량</button></div>
+  <table class="rd">
+    <tr><td>격자 체크섬</td><td id="oSum">—</td></tr>
+    <tr><td>비-EMPTY 셀</td><td id="oMass">—</td></tr>
+  </table>
+  <div id="log">준비됨.</div>
+  <div class="note">
+    같은 검증을 헤드리스로 돌리려면:<br>
+    <b>node tools/sandbox/harness.mjs</b>
+  </div>
+</aside>
+</div>
+
+<!-- [SIM] 자동자 참조 구현 — 이 파일이 명세의 구현이다 -->
+<script src="automaton.js"></script>
+<!-- [TOOL] 프리셋 · 계측 · 검증. harness.mjs 와 공유한다 -->
+<script src="lab.js"></script>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   Talus 샌드박스 UI  [TOOL]
+
+   시뮬레이션은 automaton.js 에, 프리셋·계측은 lab.js 에 있다.
+   여기에는 렌더러와 UI 배선만 둔다. **지형을 보기 좋게 보정하지 않는다**
+   (절대 규칙 6). 렌더러는 격자를 읽기만 한다.
+   ═══════════════════════════════════════════════════════════════════════════ */
+const S = window.TalusSim, L = window.TalusLab;
+const W = S.W, H = S.H, N = S.N, grid = S.grid;
+const EMPTY = S.EMPTY, SAND = S.SAND, SOIL = S.SOIL, SCREE = S.SCREE, ROCK = S.ROCK, BEDROCK = S.BEDROCK;
+const MAT_NAME = S.MAT_NAME, VOID = S.VOID;
+
+/* UI 전용 설정 (자동자 상수는 S.CFG 에 있다) */
+const UI = {
+  substeps: 4,
+  maxSettle: 600,
+  blastRadius: 40,
+  brush: 12,
+  pileCells: 30000,
+  eraseBedrock: false,
+  showMoved: true, showActive: false, timeCompress: true,
+};
+const COMPRESS_AFTER_STEPS = 180;   // 곡선은 terrain.md §10 미결 항목
+
+/* ══════════════════════ 정착 추적 (§5.2) ══════════════════════ */
+const settle = { running: false, steps: 0, t0: 0, simMs: 0, moved: 0, forced: false };
+let lastMobile = 0;
+
+function resetSettle() {
+  settle.running = false; settle.steps = 0; settle.simMs = 0; settle.moved = 0; settle.forced = false;
+}
+function beginSettleIfIdle() {
+  if (settle.running) return;
+  if (S.activeRowCount() === 0) return;         // 정착할 것이 없다
+  settle.running = true; settle.steps = 0; settle.simMs = 0; settle.moved = 0; settle.forced = false;
+  settle.t0 = performance.now();
+  ui.setState("정착 중…");
+}
+/* 정착 판정은 mobile === 0. "이동 셀 0" 은 확률 게이트에 막힌 스텝을 오인한다. */
+function advance(nSteps) {
+  let moved = 0;
+  for (let k = 0; k < nSteps; k++) {
+    if (settle.running && settle.steps >= UI.maxSettle) { settle.forced = true; finishSettle(); break; }
+    const t = performance.now();
+    const r = S.step();
+    if (settle.running) settle.simMs += performance.now() - t;
+    moved += r.moved; lastMobile = r.mobile;
+    if (settle.running) {
+      settle.steps++; settle.moved += r.moved;
+      if (r.mobile === 0) { finishSettle(); break; }
+    }
+  }
+  return moved;
+}
+function finishSettle() {
+  const ms = performance.now() - settle.t0, forced = settle.forced;
+  settle.running = false;
+  ui.setSettleResult(settle.steps, ms, settle.simMs, settle.moved, forced);
+  S.clearActive();
+  if (forced) log(`<i>MAX_SETTLE_STEPS(${UI.maxSettle}) 도달 — 강제 종료. 아직 ${lastMobile}셀이 움직일 수 있다.</i>`);
+  if (pileActive) { pileActive = false; doMeasure(); playing = false; ui.syncPlay(); }
+}
+function settleNow() {
+  beginSettleIfIdle();
+  const t = performance.now();
+  while (settle.running && performance.now() - t < 30000) advance(256);
+  renderAll = true;
+}
+
+/* ══════════════════════ 안식각 ══════════════════════ */
+let pileActive = false;
+function startPileTest(mat) {
+  const col = L.buildPile(mat, UI.pileCells);
+  resetSettle(); fitLines = null; renderAll = true;
+  pileActive = true;
+  beginSettleIfIdle();
+  playing = true; ui.syncPlay();
+  log(`<em>안식각 시험</em> — ${MAT_NAME[mat]} 기둥 ${col.w}×${col.h} = ${col.cells.toLocaleString()}셀 → 붕괴 대기`);
+}
+function doMeasure() {
+  const r = L.measureRepose();
+  ui.setAngles(r);
+  if (!r.ok) { log(`<i>측정 실패 — ${r.reason}</i>`); return; }
+  const f = (v) => v == null ? "—" : v.toFixed(1) + "°";
+  log(`<b>안식각</b> 좌 ${f(r.L && r.L.angle)} / 우 ${f(r.R && r.R.angle)} · 높이 ${r.maxH}셀 · 최대낙차 ${r.maxDrop} · `
+    + `SAND ${S.CFG.slideSandQ8}/256 · SOIL ${S.CFG.slideSoilQ8}/256 · `
+    + `게이트 ${S.CFG.slideGateStatic ? "정적" : "step"} · 양방향 ${S.CFG.bothDirections ? "on" : "off"}`);
+}
+
+/* ══════════════════════ 렌더 ══════════════════════ */
+const ter = document.getElementById("ter"), tctx = ter.getContext("2d", { alpha: false });
+const ovl = document.getElementById("ovl"), octx = ovl.getContext("2d");
+const img = tctx.createImageData(W, H), px = new Uint32Array(img.data.buffer);
+
+const hexToRgb = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
+const c255 = (v) => v < 0 ? 0 : (v > 255 ? 255 : v | 0);
+const abgr = (r, g, b) => ((255 << 24) | (c255(b) << 16) | (c255(g) << 8) | c255(r)) >>> 0;
+const shade = (s, k) => { const c = hexToRgb(s); return abgr(c[0] * k, c[1] * k, c[2] * k); };
+
+const MAT_HEX = [null, "#C9A56B", "#A6472E", "#8A8175", "#55606B", "#2C3239"];   // rendering.md §1.3
+const C_BASE = new Uint32Array(6), C_LIT = new Uint32Array(6), C_RIM = new Uint32Array(6);
+for (let m = 1; m <= 5; m++) {
+  C_BASE[m] = shade(MAT_HEX[m], 0.78);      // 내부
+  C_LIT[m]  = shade(MAT_HEX[m], 1.28);      // 상단 노출면
+  C_RIM[m]  = shade(MAT_HEX[m], 1.02);      // 저각 키라이트 림
+}
+const C_MOVE = shade("#FFF4E0", 0.94);      // 이동 중 (--blast)
+
+const skyRow = new Uint32Array(H);
+(function buildSky() {
+  const z = hexToRgb("#3A2E4A"), m = hexToRgb("#7E5A50"), o = hexToRgb("#D99A5B");
+  for (let y = 0; y < H; y++) {
+    const t = y / (H - 1);
+    let r, g, b;
+    if (t < 0.62) { const u = t / 0.62; r = z[0] + (m[0] - z[0]) * u; g = z[1] + (m[1] - z[1]) * u; b = z[2] + (m[2] - z[2]) * u; }
+    else { const u = (t - 0.62) / 0.38; r = m[0] + (o[0] - m[0]) * u; g = m[1] + (o[1] - m[1]) * u; b = m[2] + (o[2] - m[2]) * u; }
+    skyRow[y] = abgr(r * 0.6, g * 0.6, b * 0.6);
+  }
+})();
+
+let renderAll = true, fitLines = null;
+const dirtyRow = new Uint8Array(H), movedMark = new Uint8Array(N);
+
+function paintRow(y) {
+  const base = y * W, sky = skyRow[y], up = y > 0 ? base - W : -1;
+  const useMoved = UI.showMoved;
+  for (let x = 0; x < W; x++) {
+    const i = base + x, m = grid[i];
+    if (m === EMPTY) { px[i] = sky; continue; }
+    if (useMoved && movedMark[i]) { px[i] = C_MOVE; continue; }
+    if (up < 0 || grid[up + x] === EMPTY) px[i] = C_LIT[m];
+    else if (x > 0 && grid[up + x - 1] === EMPTY) px[i] = C_RIM[m];
+    else px[i] = C_BASE[m];
+  }
+}
+function render() {
+  const mN = S.getMovedCount(), mDst = S.moved.dst, mRow = S.moved.row, mDRow = S.moved.drow;
+  if (UI.showMoved) {
+    movedMark.fill(0);
+    for (let i = 0; i < mN; i++) if (mDst[i] !== VOID) movedMark[mDst[i]] = 1;
+  }
+  if (renderAll) {
+    for (let y = 0; y < H; y++) paintRow(y);
+    tctx.putImageData(img, 0, 0);
+    renderAll = false;
+  } else if (mN > 0) {
+    dirtyRow.fill(0);
+    let lo = H, hi = -1;
+    for (let i = 0; i < mN; i++) {
+      let a = mRow[i] - 1, b = mDRow[i] + 2;
+      if (a < 0) a = 0; if (b > H - 1) b = H - 1;
+      for (let y = a; y <= b; y++) dirtyRow[y] = 1;
+    }
+    for (let y = 0; y < H; y++) if (dirtyRow[y]) { paintRow(y); if (y < lo) lo = y; if (y > hi) hi = y; }
+    if (hi >= lo) tctx.putImageData(img, 0, 0, 0, lo, W, hi - lo + 1);
+  }
+  drawOverlay();
+}
+
+const mouse = { x: -1, y: -1, in: false };
+function drawOverlay() {
+  octx.clearRect(0, 0, W, H);
+  if (UI.showActive) {
+    octx.fillStyle = "rgba(61,220,255,0.12)";
+    for (let y = 0; y < H; y++) if (S.rowActive[y]) octx.fillRect(0, y, W, 1);
+  }
+  if (fitLines) {
+    octx.strokeStyle = "#3DDCFF"; octx.lineWidth = 1.5; octx.setLineDash([6, 4]);
+    for (const F of fitLines) {
+      if (!F) continue;
+      octx.beginPath(); octx.moveTo(F.x0, F.y0); octx.lineTo(F.x1, F.y1); octx.stroke();
+    }
+    octx.setLineDash([]);
+  }
+  if (mouse.in) {
+    const r = tool === "blast" ? UI.blastRadius : UI.brush;
+    octx.strokeStyle = tool === "blast" ? "#FF3D9E" : "#E8DFD2";
+    octx.lineWidth = 1;
+    octx.beginPath(); octx.arc(mouse.x + .5, mouse.y + .5, r, 0, 6.2832); octx.stroke();
+  }
+}
+
+/* ══════════════════════ 입력 ══════════════════════ */
+let tool = "draw", brushMat = SAND, playing = false, dragging = false;
+const stage = document.getElementById("stage");
+
+function toCell(ev) {
+  const r = ter.getBoundingClientRect();
+  let x = Math.floor((ev.clientX - r.left) / r.width * W);
+  let y = Math.floor((ev.clientY - r.top) / r.height * H);
+  if (x < 0) x = 0; if (x > W - 1) x = W - 1;
+  if (y < 0) y = 0; if (y > H - 1) y = H - 1;
+  return { x, y };
+}
+function paintBrush(cx, cy, m) {
+  const r = UI.brush, r2 = r * r;
+  const y0 = Math.max(0, cy - r), y1 = Math.min(H - 1, cy + r);
+  const x0 = Math.max(0, cx - r), x1 = Math.min(W - 1, cx + r);
+  for (let y = y0; y <= y1; y++) {
+    const dy = y - cy, b = y * W;
+    for (let x = x0; x <= x1; x++) {
+      const dx = x - cx;
+      if (dx * dx + dy * dy > r2) continue;
+      const i = b + x;
+      if (m === EMPTY && grid[i] === BEDROCK && !UI.eraseBedrock) continue;
+      grid[i] = m;
+    }
+  }
+  S.markRows(y0 - 2, y1 + 2);
+  renderAll = true;
+}
+function applyAt(cx, cy) {
+  if (tool === "draw") paintBrush(cx, cy, brushMat);
+  else if (tool === "dig") paintBrush(cx, cy, EMPTY);
+  else if (tool === "blast") {
+    const t = performance.now();
+    const r = S.carve(cx, cy, UI.blastRadius);
+    log(`폭발 r=${UI.blastRadius} @(${cx},${cy}) — 제거 ${r.removed.toLocaleString()}셀`
+      + (r.conv ? `, <em>ROCK→SCREE ${r.conv.toLocaleString()}셀</em>` : "")
+      + `, ${(performance.now() - t).toFixed(1)}ms`);
+    renderAll = true;
+  }
+  fitLines = null; pileActive = false;
+  beginSettleIfIdle();
+}
+
+stage.addEventListener("pointerdown", (e) => {
+  stage.setPointerCapture(e.pointerId);
+  dragging = true;
+  const c = toCell(e); mouse.x = c.x; mouse.y = c.y; mouse.in = true;
+  applyAt(c.x, c.y);
+});
+stage.addEventListener("pointermove", (e) => {
+  const c = toCell(e); mouse.x = c.x; mouse.y = c.y; mouse.in = true;
+  $("oCur").textContent = `${c.x},${c.y} ${MAT_NAME[grid[c.y * W + c.x]]}`;
+  if (dragging && tool !== "blast") applyAt(c.x, c.y);
+});
+stage.addEventListener("pointerup", () => { dragging = false; });
+stage.addEventListener("pointerleave", () => { mouse.in = false; dragging = false; });
+
+addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (k === " ") { e.preventDefault(); playing = !playing; ui.syncPlay(); if (playing) beginSettleIfIdle(); }
+  else if (k === "s") { beginSettleIfIdle(); advance(UI.substeps); renderAll = true; }
+  else if (k === "e" && mouse.in) { tool = "blast"; ui.syncTool(); applyAt(mouse.x, mouse.y); }
+  else if (k === "d") { tool = "dig"; ui.syncTool(); }
+  else if (k === "b") { tool = "draw"; ui.syncTool(); }
+  else if (k === "r") doPreset(curPreset);
+  else if (k === "[") { UI.brush = Math.max(1, UI.brush - 2); ui.syncParams(); }
+  else if (k === "]") { UI.brush = Math.min(60, UI.brush + 2); ui.syncParams(); }
+  else if (k >= "1" && k <= "5") { brushMat = +k; tool = "draw"; ui.syncTool(); ui.syncMat(); }
+});
+
+/* ══════════════════════ UI ══════════════════════ */
+function $(id) { return document.getElementById(id); }
+const logEl = $("log");
+function log(html) {
+  const d = document.createElement("div");
+  d.innerHTML = html;
+  logEl.insertBefore(d, logEl.firstChild);
+  while (logEl.childNodes.length > 60) logEl.removeChild(logEl.lastChild);
+}
+
+const syncers = [];
+const ui = {
+  setState(s) { $("oState").textContent = s; },
+  setSettleResult(steps, ms, simMs, moved, forced) {
+    $("oSetStep").textContent = steps.toLocaleString();
+    $("oSetStep").className = "big " + (forced ? "warn" : "");
+    $("oSetMs").textContent = ms.toFixed(0) + " ms";
+    $("oSetMs").className = "big " + (ms > 3000 ? "warn" : "ok");
+    $("oSetSim").textContent = simMs.toFixed(0) + " ms";
+    $("oSetTot").textContent = moved.toLocaleString();
+    this.setState(forced ? "강제 종료" : "정착 완료");
+  },
+  setAngles(r) {
+    const f = (v) => v == null ? "—" : v.toFixed(1) + "°";
+    const L1 = r.ok ? r.L : null, R1 = r.ok ? r.R : null;
+    $("oAngL").textContent = f(L1 && L1.angle);
+    $("oAngR").textContent = f(R1 && R1.angle);
+    $("oAngM").textContent = f(r.ok ? r.angle : null);
+    $("oPileH").textContent = (r.maxH || 0) + " 셀 / " + (r.maxH || 0) * 2 + "px";
+    $("oDrop").textContent = r.ok ? String(r.maxDrop) : "—";
+    fitLines = [];
+    for (const F of [L1, R1]) {
+      if (!F) { fitLines.push(null); continue; }
+      const toe = -F.inter / F.slope, span = 200;
+      const x0 = F.slope < 0 ? toe - span : toe + span;
+      const yv = (x) => r.floorY - (F.slope * x + F.inter);
+      fitLines.push({ x0, y0: yv(x0), x1: toe, y1: r.floorY });
+    }
+  },
+  syncPlay() {
+    const b = $("bPlay");
+    b.textContent = playing ? "■ 일시정지" : "▶ 재생";
+    b.classList.toggle("on", playing);
+  },
+  syncTool() { for (const b of $("tools").children) b.classList.toggle("on", b.dataset.tool === tool); },
+  syncMat()  { for (const b of $("mats").children)  b.classList.toggle("on", +b.dataset.mat === brushMat); },
+  syncParams() { for (const f of syncers) f(); },
+};
+
+for (const [m, nm, col] of [[SAND, "SAND", "#C9A56B"], [SOIL, "SOIL", "#A6472E"], [SCREE, "SCREE", "#8A8175"],
+                            [ROCK, "ROCK", "#55606B"], [BEDROCK, "BEDROCK", "#2C3239"], [EMPTY, "지우기", "#3A2E4A"]]) {
+  const b = document.createElement("button");
+  b.dataset.mat = m;
+  b.innerHTML = `<i style="background:${col}"></i>${nm}`;
+  b.onclick = () => { brushMat = m; tool = (m === EMPTY) ? "dig" : "draw"; ui.syncTool(); ui.syncMat(); };
+  $("mats").appendChild(b);
+}
+
+function bind(sid, vid, get, set, fmt) {
+  const s = $(sid), v = $(vid);
+  const sync = () => { s.value = get(); v.textContent = fmt(get()); };
+  s.addEventListener("input", () => { set(+s.value); v.textContent = fmt(+s.value); });
+  syncers.push(sync); sync();
+}
+const q8 = (v) => `${v}/256 · ${(v / 256 * 100).toFixed(1)}%`;
+bind("sBrush", "vBrush", () => UI.brush, v => UI.brush = v, v => v + " 셀");
+bind("sSeed",  "vSeed",  () => S.CFG.seed, v => S.CFG.seed = v, v => "0x" + v.toString(16).toUpperCase().padStart(2, "0"));
+bind("sSub",   "vSub",   () => UI.substeps, v => UI.substeps = v, String);
+bind("sCS",    "vCS",    () => S.CFG.slideSandQ8, v => S.CFG.slideSandQ8 = v, q8);
+bind("sCL",    "vCL",    () => S.CFG.slideSoilQ8, v => S.CFG.slideSoilQ8 = v, q8);
+bind("sMax",   "vMax",   () => UI.maxSettle, v => UI.maxSettle = v, v => v.toLocaleString());
+bind("sRad",   "vRad",   () => UI.blastRadius, v => UI.blastRadius = v, v => `${v} 셀 / ${v * 2}px`);
+bind("sRS",    "vRS",    () => S.CFG.blastResist[SAND],  v => S.CFG.blastResist[SAND] = v,  q8);
+bind("sRL",    "vRL",    () => S.CFG.blastResist[SOIL],  v => S.CFG.blastResist[SOIL] = v,  q8);
+bind("sRC",    "vRC",    () => S.CFG.blastResist[SCREE], v => S.CFG.blastResist[SCREE] = v, q8);
+bind("sRR",    "vRR",    () => S.CFG.blastResist[ROCK],  v => S.CFG.blastResist[ROCK] = v,  q8);
+bind("sPile",  "vPile",  () => UI.pileCells, v => UI.pileCells = v, v => v.toLocaleString() + " 셀");
+
+let curPreset = "layers";
+function doPreset(name) {
+  curPreset = name;
+  L.loadPreset(name);
+  resetSettle(); fitLines = null; renderAll = true;
+  S.setMovedCount(0);
+  ui.setState("편집 중");
+}
+
+$("bPlay").onclick = () => { playing = !playing; ui.syncPlay(); if (playing) beginSettleIfIdle(); };
+$("bStep").onclick = () => { beginSettleIfIdle(); advance(UI.substeps); renderAll = true; };
+$("bSettle").onclick = () => settleNow();
+for (const b of $("tools").children) b.onclick = () => { tool = b.dataset.tool; ui.syncTool(); };
+for (const b of document.querySelectorAll("[data-pre]"))
+  b.onclick = () => { doPreset(b.dataset.pre); playing = false; ui.syncPlay(); };
+
+$("bCollapseGo").onclick = () => {
+  doPreset("collapse");
+  L.fillRect(L.LEG.x0, L.LEG.y0, L.LEG.x1, L.LEG.y1, EMPTY);
+  S.markAll();
+  const conv = S.connectivity();
+  log(`<em>대형 붕괴</em> — 다리 제거 → ROCK→SCREE ${conv.toLocaleString()}셀, `
+    + `부유 흙 ${L.COLLAPSE_BLOCK_CELLS.toLocaleString()}셀 (격자의 ${(L.COLLAPSE_BLOCK_CELLS / N * 100).toFixed(1)}%)`);
+  log(`<i>주의: 실측 20만 스텝 이상 걸린다. 실전 무기 규모(반경 40)는 2,430스텝이다.</i>`);
+  beginSettleIfIdle();
+  playing = true; ui.syncPlay(); renderAll = true;
+};
+$("bConn").onclick = () => {
+  const t = performance.now(), c = S.connectivity(), ms = performance.now() - t;
+  $("oConv").textContent = c.toLocaleString() + " 셀";
+  $("oConnMs").textContent = ms.toFixed(1) + " ms";
+  log(`연결성 검사 — ROCK→SCREE ${c.toLocaleString()}셀, ${ms.toFixed(1)}ms`);
+  if (c > 0) { beginSettleIfIdle(); playing = true; ui.syncPlay(); }
+  renderAll = true;
+};
+$("bRepose").onclick  = () => startPileTest((brushMat >= SAND && brushMat <= SCREE) ? brushMat : SAND);
+$("bMeasure").onclick = () => doMeasure();
+
+function report(name, r, detail) {
+  log(`${r.pass ? "<b>PASS</b>" : "<i>FAIL</i>"} ${name} — ${detail}`);
+  return r.pass;
+}
+$("bRepro").onclick = () => { const r = L.testRepro(200); report("재현성 200스텝", r, `${hx(r.a)} vs ${hx(r.b)}`); renderAll = true; };
+$("bOrder").onclick = () => {
+  const r = L.testOrder(200);
+  report("순서 독립성 200스텝", r, `정순 ${hx(r.fwd)} / 역순 ${hx(r.rev)} / 짝홀 ${hx(r.split)}`);
+  if (!r.pass) log("<i>절대 규칙 3 위반 — 해소가 순회 순서를 탄다.</i>");
+  renderAll = true;
+};
+$("bTie").onclick = () => { const r = L.testTies(200); report("동점 검출 200스텝", r, `동점 ${r.ties}건`); renderAll = true; };
+$("bMob").onclick = () => {
+  const r = L.testMobileConsistency(120);
+  report("활성 행 무결성 120스텝", r, r.pass ? "누락 없음" : `${r.mismatchSteps}스텝 불일치 (최대 ${r.worstGap}셀)`);
+  if (!r.pass) log("<i>활성 행이 이동 가능한 셀을 굶기고 있다 → 거짓 정착.</i>");
+  renderAll = true;
+};
+$("bHash").onclick = () => {
+  const r = L.testHashQuality(120000);
+  report("해시 품질", r, `bit0 선형예측 ${(r.linearPredictRate * 100).toFixed(1)}% · `
+    + `1비율 ${(r.bit0OnesRate * 100).toFixed(1)}% · 인접동일 ${(r.neighbourSameRate * 100).toFixed(1)}%`);
+  if (!r.pass) log("<i>해시가 하위 비트로 확산되지 않는다 → 방향 선택이 무작위가 아니다.</i>");
+};
+$("bAll").onclick = () => {
+  const ok = [
+    report("재현성", L.testRepro(200), "—"),
+    report("순서 독립성", L.testOrder(200), "—"),
+    report("동점", L.testTies(200), "—"),
+    report("활성 행", L.testMobileConsistency(120), "—"),
+    report("해시 품질", L.testHashQuality(120000), "—"),
+  ];
+  log(ok.every(Boolean) ? "<b>=== 자기검증 5/5 PASS ===</b>" : "<i>=== 자기검증 실패 ===</i>");
+  renderAll = true;
+};
+const hx = (u) => (u >>> 0).toString(16).toUpperCase().padStart(8, "0");
+$("bSum").onclick  = () => { const c = S.checksum(); $("oSum").textContent = hx(c); log(`체크섬 ${hx(c)} @ step ${S.getStep()}`); };
+$("bMass").onclick = () => { $("oMass").textContent = S.massCount().toLocaleString(); };
+
+$("cEraseBed").onchange = e => UI.eraseBedrock = e.target.checked;
+$("cMoved").onchange    = e => { UI.showMoved = e.target.checked; renderAll = true; };
+$("cActive").onchange   = e => UI.showActive = e.target.checked;
+$("cCompress").onchange = e => UI.timeCompress = e.target.checked;
+$("cGate").onchange     = e => { S.CFG.slideGateStatic = e.target.checked;
+  log(`규칙 3 게이트 → <em>${e.target.checked ? "정적(위치 고정)" : "step 포함(문서 §7.1)"}</em>`); };
+$("cBoth").onchange     = e => { S.CFG.bothDirections = e.target.checked;
+  log(`방향 시도 → <em>${e.target.checked ? "양방향" : "한 방향(문서 §3.1)"}</em>`); };
+$("cGate").checked = S.CFG.slideGateStatic;
+$("cBoth").checked = S.CFG.bothDirections;
+
+/* ══════════════════════ 메인 루프 ══════════════════════ */
+let fpsT = performance.now(), fpsN = 0, simMsAvg = 0, rndMsAvg = 0, effSub = UI.substeps;
+function frame() {
+  /* 시간 압축 (§5.2) — 정착이 길어지면 SUBSTEPS 를 올려 시각적으로만 배속한다.
+     시뮬레이션 결과는 동일하다. 곡선은 §10 미결 항목. */
+  effSub = UI.substeps;
+  if (UI.timeCompress && settle.running && settle.steps > COMPRESS_AFTER_STEPS) {
+    effSub = Math.min(256, UI.substeps * (1 + ((settle.steps - COMPRESS_AFTER_STEPS) >> 6)));
+  }
+
+  if (playing) {
+    const t0 = performance.now();
+    advance(effSub);
+    simMsAvg += (performance.now() - t0 - simMsAvg) * 0.15;
+  } else if (S.getMovedCount() > 0) {
+    S.setMovedCount(0); renderAll = true;        // 정지 시 이동 강조를 지운다
+  }
+
+  const t1 = performance.now();
+  render();
+  rndMsAvg += (performance.now() - t1 - rndMsAvg) * 0.15;
+
+  fpsN++;
+  const now = performance.now();
+  if (now - fpsT > 400) {
+    $("oFps").textContent    = (fpsN * 1000 / (now - fpsT)).toFixed(0);
+    $("oSim").textContent    = simMsAvg.toFixed(2) + "ms";
+    $("oRnd").textContent    = rndMsAvg.toFixed(2) + "ms";
+    $("oSub").textContent    = effSub + (effSub !== UI.substeps ? " ×압축" : "");
+    $("oMoved").textContent  = S.getLastMoved().toLocaleString();
+    $("oMobile").textContent = lastMobile.toLocaleString();
+    $("oAct").textContent    = S.activeRowCount() + "/" + H;
+    $("oStep").textContent   = S.getStep().toLocaleString();
+    $("oCurStep").textContent = settle.running ? settle.steps.toLocaleString() : "0";
+    fpsT = now; fpsN = 0;
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ══════════════════════ 부팅 ══════════════════════ */
+ui.syncTool(); ui.syncMat(); ui.syncPlay();
+doPreset("layers");
+log("<em>Phase 0 샌드박스</em> — 프리셋을 고르고 파거나 폭발시켜 본다.\n"
+  + "상수를 확정하기 전에 <b>자기검증 5개</b>를 먼저 통과시킨다.");
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
