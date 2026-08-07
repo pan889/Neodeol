@@ -1,7 +1,7 @@
 """시뮬레이션 상수의 기계 판독 사본.
 
-**문서가 기준이다.** 이 파일은 `docs/simulation.md` §8 과 `docs/terrain.md` §4 를
-그대로 옮긴 사본이며, 값이 어긋나면 문서를 먼저 고치고 여기를 맞춘다.
+**문서가 기준이다.** 이 파일은 `docs/simulation.md` §8, `docs/terrain.md` §4,
+`docs/mapgen.md`, `docs/match.md`의 기계 판독 사본이며, 값이 어긋나면 문서를 먼저 고친다.
 
 여기 있는 값은 대부분 **시작값이며 확정값이 아니다.** Phase 0 (`tools/sandbox/`)
 과 Phase 1 (`tools/prototype/`) 에서 손으로 만져보고 정한다.
@@ -15,10 +15,8 @@
 전체 + `tables/trig.bin` 의 해시" 는 성립할 수 없다 — 소스 코드 해시는 Python 과
 TypeScript 사이에서 절대 같아지지 않고, 서버는 클라 소스를 해시할 수도 없다.
 
-.. warning::
-   **상수는 그대로인데 `sim/` 코드만 바뀐 경우를 못 잡는다.** Phase 0 에서 해시 확산
-   단계 추가와 활성 집합 정의 변경이 실제로 그런 경우였다. 무엇이 그걸 잡을지는
-   미결이다 — `docs/decisions.md` B9 (수동 `RULES_VERSION` vs 골든 리플레이 CI).
+`RULES_VERSION`은 상수 밖의 절차·알고리즘이 바뀔 때 수동으로 올린다. 이를 잊은 경우는
+교차 골든 CI가 잡는다 (`docs/decisions.md` B9).
 """
 
 from __future__ import annotations
@@ -26,6 +24,10 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Final
+
+# ── 규칙 신원 (netcode.md §7.3) ───────────────────────────────────────
+# 상수값이 그대로인 로직 변경에도 SIM_VERSION 이 바뀌도록 수동으로 올린다.
+RULES_VERSION: Final = 6
 
 # ── 격자 (terrain.md §1) ────────────────────────────────────────────────
 GRID_W: Final = 960
@@ -77,6 +79,27 @@ MAX_SETTLE_STEPS: Final = 12_000
 # terrain.md §6.1 정착 재개 루프의 상한. 통상 2회로 끝난다.
 CONNECTIVITY_MAX_ROUNDS: Final = 8
 
+# ── 초기 맵 생성 (mapgen.md) ───────────────────────────────────────────
+# 맵 생성 알고리즘을 바꾸면 반드시 올린다. 골든 리플레이와 함께 검증한다.
+MAPGEN_VERSION: Final = 1
+
+# ── 매치 진행 (match.md) ────────────────────────────────────────────────
+# 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
+MATCH_VERSION: Final = 5
+MATCH_ROUNDS: Final = 5
+ROUND_TURN_CAP: Final = 40
+START_GOLD: Final = 1_500
+GOLD_PER_DAMAGE: Final = 8
+GOLD_PER_KILL: Final = 400
+GOLD_SURVIVE: Final = 300
+GOLD_LAST_PLACE_BONUS: Final = 250
+KILL_SCORE: Final = 100
+DAMAGE_SCORE: Final = 1
+SURVIVE_SCORE: Final = 50
+FUEL_CELLS_PER_UNIT: Final = 14
+MOVE_MAX_STEP_UP: Final = 6
+AMMO_INFINITE: Final = 0x7FFFFFFF
+
 # `SUBSTEPS` 와 `STABLE_FRAMES` 는 여기에 없다.
 #   SUBSTEPS    — terrain.md §3.4 대로 시뮬레이션 상수가 아니라 표현 상수다.
 #                 서버는 프레임이 없어 쓰지 않고, 클라이언트가 값을 바꿔도 격자 결과와
@@ -103,12 +126,12 @@ BLAST_RESIST_Q8: Final = {
 GRAVITY: Final = 12  # subpx/tick²
 POWER_SCALE: Final = 624  # B12 확정 — 최대 파워 45° 사거리 = 맵 폭의 98.9% (1899px)
 # 편차/사거리 비는 정확히 WIND_MAX/GRAVITY 이고 파워와 무관하다 (실측 확인).
-# 45° 기준: 1 → 8%, 2 → 17%, 6 → 50%. 이전 값 6 은 "중력의 절반" 이라는 근거로
-# 잡혔는데 그러면 바람이 착탄점을 지배한다 — simulation.md §8.2. 잠정 2.
-WIND_MAX: Final = 2  # subpx/tick²
+# 직접 플레이 피드백에 따라 평상시에는 완만하게 변하되 드문 돌풍이 위협이 되도록 최대치를 4로 올린다.
+WIND_MAX: Final = 4  # subpx/tick²
 DRAG_Q16: Final = 0  # §4.5 — 항력 없음으로 시작
 MAX_FLIGHT_TICKS: Final = 1800  # 30초
 SELF_HIT_IGNORE_TICKS: Final = 8
+BARREL_LEN_SUBPX: Final = 160  # 10 px. 짧고 굵은 곡사포 포신
 
 # ── 탱크 (simulation.md §6, §8) ─────────────────────────────────────────
 TANK_W_SUBPX: Final = 384  # 24 px
@@ -136,6 +159,18 @@ PROVISIONAL: Final = frozenset(
         "POWER_SCALE",  # B12 로 목표(맵 폭)는 정해졌다. 최종 확정은 Phase 1 체감
         "WIND_MAX",  # decisions.md C4 — 고각 편차 클램프와 함께 정해야 한다
         "BLAST_RESIST_Q8",  # decisions.md C1
+        "MATCH_ROUNDS",  # game-design.md §3, 상점 횟수와 함께 재검토
+        "ROUND_TURN_CAP",  # decisions.md B12
+        "START_GOLD",  # decisions.md C6
+        "GOLD_PER_DAMAGE",  # game-design.md §7
+        "GOLD_PER_KILL",  # game-design.md §7
+        "GOLD_SURVIVE",  # game-design.md §7
+        "GOLD_LAST_PLACE_BONUS",  # game-design.md §7
+        "KILL_SCORE",  # decisions.md B7
+        "DAMAGE_SCORE",  # decisions.md B7
+        "SURVIVE_SCORE",  # decisions.md B7
+        "FUEL_CELLS_PER_UNIT",  # decisions.md B4
+        "MOVE_MAX_STEP_UP",  # decisions.md B4
     }
 )
 
@@ -186,4 +221,4 @@ def compute_sim_version() -> str:
 SIM_VERSION: Final = compute_sim_version()
 
 #: 와이어 프로토콜 버전. 메시지 구조가 바뀌면 손으로 올린다 (netcode.md).
-PROTOCOL_VERSION: Final = 1
+PROTOCOL_VERSION: Final = 2

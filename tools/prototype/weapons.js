@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 무기 7종  (docs/game-design.md §6.1)
+   Talus — 무기 8종  (docs/game-design.md §6.1)
 
    [SIM] 구획. **정수 연산만.** float / Math.random / 시계 금지.
 
@@ -16,12 +16,12 @@
    | 굴착탄의 하향 관통 | 착탄 후 아래로 N셀 파고들어 폭발 | **잠정** — 깊이는 밸런싱 |
    | 전복탄의 경사 활강 | 착탄 후 표면을 따라 낮은 쪽으로 굴러감 | **잠정** — 최대 거리는 밸런싱 |
    | 성형탄의 피해≠카빙 반경 | `blastRadius` 와 `carveCells` 를 분리 | 아니다. 이미 단위가 달랐다 |
-   | 측풍계 | **정보를 숨기지 않는다.** 게이지 정밀도만 올린다 | 확정 — lockstep 에서 정보 은닉은 불가능하다 |
+   | 측풍계 | 현재 바람은 모두 표시하고 다음 턴을 예보한다 | 확정 — lockstep 에서 정보 은닉은 불가능하다 |
 
    **측풍계가 왜 그런가.** 모든 클라가 같은 입력으로 같은 계산을 하므로 "나만 정확한
    바람 값을 안다"는 것이 원리적으로 불가능하다. 서버가 누군가에게 다른 값을 보내면
-   그 사람의 재생이 갈라진다. 그래서 바람 값은 **모두가 알고 있고**, 측풍계는 기본
-   게이지의 표시 해상도를 올려주는 UI 아이템으로 재정의했다.
+   그 사람의 재생이 갈라진다. 그래서 현재 바람 값은 **모두가 알고 있고**, 측풍계는
+   다음 턴의 바람과 돌풍 여부를 먼저 보여주는 UI 아이템으로 재정의했다.
 
    ───────────────────────────────────────────────────────────────────────────
    무기 파라미터 스키마 — `decisions.md` C1
@@ -57,6 +57,7 @@
   }
 
   /* ── 무기 테이블 ────────────────────────────────────────────────────── */
+  var NUCLEAR_WEAPON_ID = 7;
   var WEAPONS = [
     W_({ id: 0, name: "표준탄", kind: "plain",
          maxDamage: 45, blastRadius: 1024, carveCells: 28,
@@ -96,6 +97,11 @@
          depositCells: 30, depositMat: T.SOIL,
          ammo0: 2, price: 650,
          desc: "폭발 대신 흙을 쌓는다. 유일한 지형 추가" }),
+
+    W_({ id: NUCLEAR_WEAPON_ID, name: "핵포탄", kind: "plain",
+         maxDamage: 120, blastRadius: 4096, carveCells: 80,
+         ammo0: 0, price: 4800,
+         desc: "초기 0발. 전장을 뒤엎는 초대형 폭발" }),
   ];
 
   /* ── 비-포탄 아이템 (game-design.md §6.2) ───────────────────────────── */
@@ -103,7 +109,7 @@
     { id: 0, key: "shield",   name: "차폐막", price: 600, desc: "1회 피격 무효" },
     { id: 1, key: "parachute", name: "낙하산", price: 400, desc: "낙하 피해 무효. 자동 발동" },
     { id: 2, key: "fuel",     name: "연료",   price: 300, desc: "턴당 좌우 이동" },
-    { id: 3, key: "anemo",    name: "측풍계", price: 500, desc: "바람을 정확한 숫자로 표시" },
+    { id: 3, key: "anemo",    name: "측풍계", price: 500, desc: "다음 턴 바람과 돌풍을 예보" },
   ];
 
   /* ══════════════════════════════════════════════════════════════════════
@@ -216,12 +222,12 @@
       var filled = T.deposit(cx, cy, w.depositCells, w.depositMat);
       return { removed: 0, conv: 0, filled: filled };
     }
-    var r = T.carve(cx, cy, w.carveCells);
-    return { removed: r.removed, conv: r.conv, filled: 0 };
+    var r = T.carveDeferred(cx, cy, w.carveCells);
+    return { removed: r.removed, conv: 0, filled: 0 };
   }
 
   root.TalusWeapons = {
-    WEAPONS: WEAPONS, ITEMS: ITEMS,
+    WEAPONS: WEAPONS, ITEMS: ITEMS, NUCLEAR_WEAPON_ID: NUCLEAR_WEAPON_ID,
     resolveShot: resolveShot, applyDetonation: applyDetonation,
     byId: function (id) { return WEAPONS[id] || WEAPONS[0]; },
   };

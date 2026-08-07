@@ -81,6 +81,9 @@ def _of_kind(kind: str) -> list[pathlib.Path]:
 
 STEP_REPLAYS = _of_kind("terrain-only")
 TURN_REPLAYS = _of_kind("terrain-turns")
+SHOT_REPLAYS = _of_kind("shots")
+MAPGEN_REPLAYS = _of_kind("mapgen")
+MATCH_REPLAYS = _of_kind("match")
 
 
 def _turn_params() -> list:
@@ -102,9 +105,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def _apply_cfg(header: dict) -> None:
+def _apply_cfg(header: dict, seed: int | None = None) -> None:
     cfg = header["cfg"]
-    T.CFG.seed = header["seed"]
+    T.CFG.seed = header["seed"] if seed is None else seed
     T.CFG.slide_sand_q8 = cfg["slideSandQ8"]
     T.CFG.slide_soil_q8 = cfg["slideSoilQ8"]
     T.CFG.slide_scree_q8 = cfg["slideScreeQ8"]
@@ -124,6 +127,32 @@ def _load_grid(header: dict, path: pathlib.Path) -> None:
     T.mark_all()
     T.set_step(0)
 
+
+
+def _assert_ballistics_match(header: dict) -> None:
+    """골든 헤더의 탄도 상수가 Python 기본값과 **같은지 확인한다. 덮어쓰지 않는다.**
+
+    처음에는 헤더 값을 `B.CFG` 에 setattr 로 주입했다. 의도는 "기본값이 우연히 같아서
+    통과하는 것"을 막는 것이었는데 **정확히 반대 효과였다** — 주입하면 Python 기본값이
+    TS 와 달라도 대조가 성립한다. 두 구현의 탄도 상수를 맞대는 유일한 게이트가
+    상수 이탈에 대해 항상 초록색이 된다.
+
+    게다가 `B.CFG` 는 모듈 전역이라 주입이 뒤따르는 테스트로 샌다 — 파일 단위 실행과
+    전체 실행의 결과가 갈린다.
+
+    확인으로 바꾸면 둘 다 사라진다. 밸런스를 의도적으로 바꿨다면 골든을 재생성하면 되고,
+    그때 이 검사가 "재생성을 잊었다"를 잡는다.
+    """
+    from talus.sim import ballistics as B
+
+    for key, value in header["ballistics"].items():
+        snake = "".join("_" + char.lower() if char.isupper() else char for char in key)
+        assert hasattr(B.CFG, snake), f"탄도 상수 {key} → {snake} 가 Python 에 없다"
+        got = getattr(B.CFG, snake)
+        assert got == value, (
+            f"탄도 상수 {key} 가 갈라졌다: TS(골든) {value} vs Python {got}\n"
+            f"  → 밸런스를 바꿨다면 커밋 메시지에 이유를 적고 골든을 재생성한다"
+        )
 
 @pytest.mark.crosssim
 @pytest.mark.parametrize("path", STEP_REPLAYS, ids=lambda p: p.stem)
@@ -154,12 +183,81 @@ def test_cross_sim(path: pathlib.Path) -> None:
 
 @pytest.mark.crosssim
 def test_golden_set_is_complete() -> None:
-    """골든 리플레이가 20개 이상이고 사이드카가 전부 있다. (roadmap Phase 3 완료 조건)"""
+    """골든 리플레이가 20개 이상이고 필요한 사이드카가 전부 있다."""
     assert len(REPLAYS) >= 20, f"골든 리플레이가 {len(REPLAYS)}개뿐이다 (20개 이상 필요)"
     for p in REPLAYS:
         header, records = _load(p)
-        assert (p.parent / header["gridFile"]).is_file(), f"{header['gridFile']} 이 없다"
+        if "gridFile" in header:
+            assert (p.parent / header["gridFile"]).is_file(), f"{header['gridFile']} 이 없다"
         assert len(records) >= 2, f"{p.stem} 레코드가 너무 적다"
+
+
+@pytest.mark.crosssim
+@pytest.mark.parametrize("path", MAPGEN_REPLAYS, ids=lambda p: p.stem)
+def test_cross_sim_mapgen(path: pathlib.Path) -> None:
+    """사이드카 없이 초기 격자·정착·스폰을 TS 골든과 대조한다."""
+    from talus import constants
+    from talus.sim import mapgen as M
+    from talus.sim.intmath import hash32_scalar
+
+    header, records = _load(path)
+    assert header["mapgenVersion"] == M.MAPGEN_VERSION == constants.MAPGEN_VERSION
+    assert len(records) == header["caseCount"]
+
+    for rec in records:
+        map_seed = rec["mapSeed"]
+        _apply_cfg(header, map_seed)
+        generated = M.build_map(map_seed)
+        T.grid[:] = generated
+
+        assert f"{T.checksum():08X}" == rec["rawChecksum"]
+        assert T.mass_count() == rec["rawMass"]
+
+        initial_connectivity = T.connectivity()
+        assert initial_connectivity == rec["initialConnectivity"]
+        T.mark_all()
+        T.set_step(0)
+
+        settle_steps = 0
+        connectivity_rounds = 0
+        settled = False
+        while True:
+            settled = False
+            while settle_steps < header["maxSettleSteps"]:
+                settle_steps += 1
+                if T.step().mobile == 0:
+                    settled = True
+                    break
+            if not settled:
+                break
+            converted = T.connectivity()
+            if converted == 0:
+                break
+            connectivity_rounds += 1
+            if connectivity_rounds >= header["connectivityMaxRounds"]:
+                settled = False
+                break
+
+        assert settled, f"mapSeed {map_seed}: 초기 정착이 상한에 걸렸다"
+        assert settle_steps == rec["settleSteps"]
+        assert connectivity_rounds == rec["connectivityRounds"]
+        assert f"{T.checksum():08X}" == rec["checksum"]
+        assert T.mass_count() == rec["mass"]
+        assert {
+            str(players): M.choose_spawn_cells(T.grid, players) for players in range(2, 7)
+        } == rec["spawns"]
+
+        raw_2d = generated.reshape(T.H, T.W)
+        left_top = M.surface_cell_y(generated, 2)
+        right_top = M.surface_cell_y(generated, T.W - 3)
+        assert np.all(raw_2d[left_top:, :2] == T.BEDROCK)
+        assert np.all(raw_2d[right_top:, T.W - 2 :] == T.BEDROCK)
+        assert np.all(raw_2d[M.BEDROCK_Y :, :] == T.BEDROCK)
+        for index, base_x in enumerate(M.ANCHOR_BASE_X):
+            jitter = (hash32_scalar(map_seed, index, M.ANCHOR_SALT, 0) & 31) - 15
+            x = max(24, min(935, base_x + jitter))
+            top = max(220, min(500, M._generated_surface(map_seed, x) + 96))
+            assert np.all(raw_2d[top:, x - 3 : x + 3] == T.BEDROCK)
 
 
 @pytest.mark.crosssim
@@ -282,3 +380,331 @@ def test_long_replays_divide_the_work() -> None:
     avg_l = long_["totalSteps"] // long_["turnCount"]
     assert avg_s > avg_l * 2, f"규모 차이가 없다: 60턴 {avg_s}/턴 vs 1000턴 {avg_l}/턴"
     assert long_["totalSteps"] > short["totalSteps"], "1000턴본이 총량에서 더 많이 돌아야 한다"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 발사 리플레이 — 탄도 · 무기 · 피해 · 재배치
+#
+# 위의 리플레이들은 전부 지형 전용이라 ballistics.py / weapons.py 를 아무것도
+# 검증하지 못한다. 버그가 있어도 게이트가 초록색인 상태였다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _trig_bytes() -> bytes | None:
+    root = _find_repo_root()
+    if root is None:
+        return None
+    p = root / "tables" / "trig.bin"
+    return p.read_bytes() if p.is_file() else None
+
+
+def _pts_hash(pts: list[tuple[int, int]]) -> str:
+    """TS 의 ptsHash 와 같은 값 — Int32Array 리틀엔디언 위의 FNV-1a."""
+    from talus.sim.intmath import fnv1a32, hex8
+
+    buf = bytearray()
+    for x, y in pts:
+        buf += int(x).to_bytes(4, "little", signed=True)
+        buf += int(y).to_bytes(4, "little", signed=True)
+    return hex8(fnv1a32(buf))
+
+
+def _match_player(player) -> dict:
+    return {
+        "slot": player.slot,
+        "x": player.x,
+        "y": player.y,
+        "hp": player.hp,
+        "alive": player.alive,
+        "buried": player.buried,
+        "angle10": player.angle10,
+        "power": player.power,
+        "gold": player.gold,
+        "weaponId": player.weapon_id,
+        "ammo": player.ammo,
+        "items": {
+            "shield": player.items.shield,
+            "parachute": player.items.parachute,
+            "fuel": player.items.fuel,
+            "anemo": player.items.anemo,
+        },
+        "score": player.score,
+        "kills": player.kills,
+        "damageDone": player.damage_done,
+        "shieldUp": player.shield_up,
+    }
+
+
+def _match_outcome(outcome) -> dict:
+    if not outcome.over:
+        return {"over": False}
+    return {"over": True, "reason": outcome.reason, "winner": outcome.winner}
+
+
+@pytest.mark.crosssim
+@pytest.mark.parametrize("path", MATCH_REPLAYS, ids=lambda p: p.stem)
+def test_cross_sim_match(path: pathlib.Path) -> None:
+    """매치 골든을 mapSeed + 시간순 intent + purchases 로 처음부터 재생한다."""
+    from talus import constants
+    from talus.sim import ballistics as B
+    from talus.sim import mapgen as M
+    from talus.sim import match as Match
+    from talus.sim import trig
+
+    blob = _trig_bytes()
+    if blob is None:
+        pytest.skip("tables/trig.bin 을 못 찾았다")
+    trig.load_trig(blob)
+
+    header, records = _load(path)
+    assert header["matchVersion"] == Match.MATCH_VERSION == constants.MATCH_VERSION
+    assert header["mapgenVersion"] == M.MAPGEN_VERSION == constants.MAPGEN_VERSION
+    assert len(records) == header["recordCount"]
+    _apply_cfg(header, header["mapSeed"])
+    _assert_ballistics_match(header)
+
+    specs = [
+        Match.PlayerSpec(name=spec["name"], is_ai=spec.get("isAI", False))
+        for spec in header["specs"]
+    ]
+    made = Match.create_match(header["mapSeed"], specs)
+    assert {
+        "steps": made.initial_settle.steps,
+        "connectivityRounds": made.initial_settle.connectivity_rounds,
+        "forced": made.initial_settle.forced,
+    } == header["initialSettle"]
+    state = made.state
+    assert {
+        "roundNo": state.round_no,
+        "turnNo": state.turn_no,
+        "roundTurn": state.round_turn,
+        "activeSlot": state.active_slot,
+        "wind": state.wind,
+    } == header["initial"]
+
+    for record in records:
+        if record["record"] == "shop":
+            for purchase in record["purchases"]:
+                player = state.players[purchase["slot"]]
+                if purchase["kind"] == "item":
+                    ok = Match.buy_item(player, purchase["key"])
+                else:
+                    ok = Match.buy_weapon(player, purchase["weaponId"])
+                assert ok == purchase["ok"]
+            assert [_match_player(player) for player in state.players] == record["afterPurchases"]
+
+            Match.start_next_round(state)
+            assert state.round_no == record["roundNo"]
+            assert state.round_turn == record["roundTurn"]
+            assert state.turn_no == record["turnNo"]
+            assert state.active_slot == record["activeSlot"]
+            assert state.wind == record["wind"]
+            assert state.spawn_cells == record["spawnCells"]
+            assert state.phase == record["phase"]
+            assert [_match_player(player) for player in state.players] == record["players"]
+            assert f"{T.checksum():08X}" == record["checksum"]
+            assert T.mass_count() == record["mass"]
+            continue
+
+        assert record["record"] == "turn"
+        assert state.round_no == record["roundNo"]
+        assert state.round_turn + 1 == record["roundTurn"]
+        assert state.active_slot == record["activeSlot"]
+        raw_intent = record["intent"]
+        intent = Match.Intent(
+            angle10=raw_intent["angle10"],
+            power=raw_intent["power"],
+            weapon_id=raw_intent["weaponId"],
+            move_dx=raw_intent["moveDx"],
+            use_shield=raw_intent["useShield"],
+        )
+        result = Match.resolve_match_turn(state, intent)
+        assert state.active_slot == record["nextActiveSlot"]
+        assert result.turn_no == record["turnNo"]
+        assert result.turn_seed == record["turnSeed"]
+        assert result.wind == record["wind"]
+        assert [
+            {"slot": leg.slot, "kind": leg.kind, "n": len(leg.pts), "h": _pts_hash(leg.pts)}
+            for leg in result.legs
+        ] == record["legs"]
+        assert [
+            {"x": det.x, "y": det.y, "w": det.weapon.id, "owner": det.owner}
+            for det in result.dets
+        ] == record["dets"]
+        assert result.events == record["events"]
+        assert result.removed == record["removed"]
+        assert result.filled == record["filled"]
+        assert result.conv == record["conv"]
+        assert {
+            "steps": result.settle.steps,
+            "connectivityRounds": result.settle.connectivity_rounds,
+            "forced": result.settle.forced,
+        } == record["settle"]
+        assert result.last_blast_owner == record["lastBlastOwner"]
+        assert _match_outcome(result.outcome) == record["outcome"]
+        assert result.round_events == record["roundEvents"]
+        assert state.phase == record["phase"]
+        assert [_match_player(player) for player in state.players] == record["players"]
+        assert f"{result.checksum:08X}" == record["checksum"]
+        assert result.mass == record["mass"]
+
+
+@pytest.mark.crosssim
+@pytest.mark.parametrize("path", SHOT_REPLAYS, ids=lambda p: p.stem)
+def test_cross_sim_shots(path: pathlib.Path) -> None:
+    """발사 리플레이를 재생해 궤적·폭발·피해·재배치를 전부 대조한다.
+
+    한 레코드가 턴 하나 전체다:
+      resolve_shot → compute_damage(카빙 전 위치 기준, §5.2) → apply_detonation
+        → 정착 → 연결성 재검사 → reseat_tank → 낙하 피해
+
+    **절차가 `client/tools/gen-golden.mts` 의 발사 블록과 1:1이다. 한쪽만 고치면 안 된다.**
+    """
+    from talus.sim import ballistics as B
+    from talus.sim import trig
+    from talus.sim import weapons as Wp
+
+    blob = _trig_bytes()
+    if blob is None:
+        pytest.skip("tables/trig.bin 을 못 찾았다")
+    trig.load_trig(blob)
+
+    header, records = _load(path)
+    assert header["v"] == 1
+    _apply_cfg(header)
+    _load_grid(header, path)
+
+    _assert_ballistics_match(header)
+
+    for _ in range(40000):
+        if T.step().mobile == 0:
+            break
+
+    # slots 는 **셀 단위**다. 셀 → subpx 는 × CELL_SUBPX(32) = × 2 × SUBPX(16)
+    tanks = [
+        B.make_tank(i, cell * 2 * B.SUBPX, f"T{i}") for i, cell in enumerate(header["slots"])
+    ]
+
+    for spec, rec in zip(header["shots"], records, strict=True):
+        w = Wp.by_id(spec["w"])
+        assert w.id == spec["w"]
+        by = spec["by"]
+        shooter = tanks[by]
+        pose = B.shot_pose(shooter, spec["angle10"])
+        plan = Wp.resolve_shot(
+            pose.x,
+            pose.y,
+            pose.angle10,
+            spec["power"],
+            spec["wind"],
+            by,
+            tanks,
+            w,
+        )
+
+        # ── 궤적
+        got_legs = [
+            {"kind": leg.kind, "n": len(leg.pts), "h": _pts_hash(leg.pts)} for leg in plan.legs
+        ]
+        assert got_legs == rec["legs"], (
+            f"{path.stem} 발사 {rec['shot']} ({w.name}): 궤적이 갈라졌다\n"
+            f"  TS(golden) {rec['legs']}\n  Python     {got_legs}"
+        )
+
+        # ── 폭발 지점
+        got_dets = [{"x": d.x, "y": d.y, "w": d.weapon.id} for d in plan.dets]
+        assert got_dets == rec["dets"], f"발사 {rec['shot']}: 폭발 지점이 다르다"
+
+        # ── 피해 (카빙 전 위치 기준)
+        dmg = []
+        for d in plan.dets:
+            for hit in B.compute_damage(d.x, d.y, w.to_damage(), tanks):
+                dmg.append({"idx": hit.idx, "dmg": hit.dmg, "dist": hit.dist})
+        assert dmg == rec["dmg"], f"발사 {rec['shot']}: 피해가 다르다"
+        for hit in dmg:
+            tk = tanks[hit["idx"]]
+            tk.hp -= hit["dmg"]
+            if tk.hp <= 0:
+                tk.hp = 0
+                tk.alive = False
+
+        removed = filled = 0
+        for d in plan.dets:
+            r = Wp.apply_detonation(d)
+            removed += r.removed
+            filled += r.filled
+        conv = T.connectivity()
+        assert (removed, conv, filled) == (rec["removed"], rec["conv"], rec["filled"]), (
+            f"발사 {rec['shot']}: 카빙/적층량이 다르다"
+        )
+
+        # ── 정착 + 연결성 재검사
+        steps = 0
+        rounds = 0
+        while True:
+            settled = False
+            while steps < 40000:
+                steps += 1
+                if T.step().mobile == 0:
+                    settled = True
+                    break
+            if not settled:
+                break
+            if T.connectivity() > 0:
+                rounds += 1
+                if rounds < 8:
+                    continue
+            break
+        assert steps == rec["steps"], f"발사 {rec['shot']}: 정착 스텝 수가 다르다"
+
+        # ── 재배치 (정착이 완전히 끝난 뒤에만)
+        falls = []
+        for tk in tanks:
+            if not tk.alive:
+                falls.append(0)
+                continue
+            f = B.reseat_tank(tk)
+            if f < 0:
+                tk.alive = False
+                tk.hp = 0
+                falls.append(-1)
+                continue
+            fd = B.fall_damage(f)
+            tk.hp -= fd
+            if tk.hp <= 0:
+                tk.hp = 0
+                tk.alive = False
+            tk.buried = B.buried_fraction(tk) >= B.CFG.burial_permille
+            falls.append(f)
+        assert falls == rec["falls"], f"발사 {rec['shot']}: 낙하 픽셀이 다르다"
+
+        got_tanks = [
+            {"x": t.x, "y": t.y, "hp": t.hp, "alive": t.alive, "buried": t.buried} for t in tanks
+        ]
+        assert got_tanks == rec["tanks"], (
+            f"발사 {rec['shot']}: 탱크 상태가 갈라졌다\n"
+            f"  TS(golden) {rec['tanks']}\n  Python     {got_tanks}"
+        )
+
+        got_sum = f"{T.checksum():08X}"
+        assert got_sum == rec["checksum"], (
+            f"발사 {rec['shot']}: 지형 체크섬이 갈라졌다 TS {rec['checksum']} vs {got_sum}"
+        )
+        assert T.mass_count() == rec["mass"]
+
+
+@pytest.mark.crosssim
+def test_shot_replay_exercises_every_weapon() -> None:
+    """발사 리플레이가 무기 8종을 전부 밟는다.
+
+    무기를 하나 추가하고 골든을 재생성하지 않으면 그 무기는 **검증 없이** 들어간다.
+    """
+    from talus.sim import weapons as Wp
+
+    if not SHOT_REPLAYS:
+        pytest.skip("kind=shots 리플레이가 없다")
+    for p in SHOT_REPLAYS:
+        header, _ = _load(p)
+        used = {s["w"] for s in header["shots"]}
+        missing = {w.id for w in Wp.WEAPONS} - used
+        assert not missing, f"{p.stem}: 무기 {sorted(missing)} 이(가) 한 번도 안 나온다"

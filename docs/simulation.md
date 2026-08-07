@@ -139,18 +139,25 @@ tables/trig.bin  — 저장소에 커밋되는 바이너리 데이터 파일
 
 ```
 v0     = (power * POWER_SCALE) >> 10           // power: 0~1000
-vx     =  ((v0 * COS[angle10]) >> 12)         // COS < 0 (각도 > 90°) 도 그대로
-vy     = -((v0 * SIN[angle10]) >> 12)         // y축은 아래가 + . 괄호가 필수다 — §2.2
+tilt10 = tankTilt10(tank)                       // 좌우 궤도 지지점, -140~+140
+shot10 = clamp(angle10 - tilt10, 0, 1800)       // angle10은 차체 기준 상대각
+vx     =  ((v0 * COS[shot10]) >> 12)            // COS < 0 (각도 > 90°) 도 그대로
+vy     = -((v0 * SIN[shot10]) >> 12)            // y축은 아래가 + . 괄호가 필수다 — §2.2
 pos    = 포신 끝 위치 (subpx)
 ```
 
-**포신 끝 위치의 산출 규칙이 아직 없다.** 회전 중심(탱크 AABB 중심인지 상단 중앙인지),
-포신 길이 `BARREL_LEN`, 발사점이 지형에 파묻혔을 때의 처리가 정해지지 않았다.
+좌우 궤도 아래의 가장 가까운 지지 셀 높이 차를 고정 폭으로 비교하고, `0.0~14.0°` 삼각표에서
+`abs(rise*COS - run*SIN)`이 가장 작은 데시도를 고른다. +경사는 화면 기준 시계 방향이다.
+
+포탑 중심은 탱크 상단 중앙을 `tilt10`만큼 회전한 점이고, 포신 길이는 Phase 3.5 시각 검증에서
+곡사포 실루엣에 맞춰 `160 subpx = 10px`로 확정한다. 발사점이 지형에 파묻혔을 때의 처리는 아직 정해지지 않았다.
 이건 착탄점을 직접 바꾸는 값이라 두 구현이 다르면 즉시 갈라진다. `docs/decisions.md` 참조.
 
 ```
-pos.x = tank.x + ((BARREL_LEN * COS[angle10]) >> 12)
-pos.y = tank.y - ((BARREL_LEN * SIN[angle10]) >> 12)     // 회전 중심 기준
+anchor.x = tank.x + ((TANK_H * signedSIN(tilt10)) >> 12)
+anchor.y = tank.y - ((TANK_H * COS[abs(tilt10)]) >> 12)
+pos.x    = anchor.x + ((BARREL_LEN * COS[shot10]) >> 12)
+pos.y    = anchor.y - ((BARREL_LEN * SIN[shot10]) >> 12)
 ```
 
 ### 4.2 적분 — semi-implicit Euler
@@ -274,13 +281,13 @@ isqrt(n) : 뉴턴법 정수 버전. 결과는 floor(sqrt(n))
 
 `Math.sqrt()` 금지. 이유는 §3과 동일.
 
-### 5.2 동시 폭발
+### 5.2 한 발의 다중 폭발
 
-동시 턴이므로 여러 폭발이 같은 시점에 적용된다.
+분열탄처럼 한 발이 여러 detonation을 만들 수 있으므로 같은 발의 폭발은 한 묶음으로 적용한다.
 
 ```
-1) 슬롯 번호 오름차순으로 전부 carve
-2) 전체 폭발에 대해 탱크 피해를 합산 적용   ← 카빙 전 위치 기준으로 계산
+1) 무기 계획에 기록된 detonation 순서로 전부 carve/deposit
+2) 그 발의 전체 폭발에 대해 탱크 피해를 합산 적용 ← 카빙 전 위치 기준으로 계산
 3) 연결성 검사 → 정착 → 재검사 루프          terrain.md §6.1. 변환 0 까지
 4) 탱크 재배치                               §6.1
 5) 격자 체크섬 1회                            terrain.md §7.2
@@ -328,7 +335,8 @@ isqrt(n) : 뉴턴법 정수 버전. 결과는 floor(sqrt(n))
 
 ### 6.2 포신 각도
 
-**지형 기울기와 무관하게 절대각을 유지한다.** `game-design.md` §8.1.
+`angle10`은 차체 기준 상대각이다. 실제 월드 발사각은 `angle10 - tankTilt10`이며 `0~1800`으로
+클램프한다. 차체 경사는 지형 격자에서 매 발 결정론적으로 다시 파생하므로 별도 네트워크 필드가 없다.
 
 ---
 
@@ -336,10 +344,10 @@ isqrt(n) : 뉴턴법 정수 버전. 결과는 floor(sqrt(n))
 
 ```
 PHASE_AIM       조준 입력 수집. 시뮬레이션 없음
-PHASE_RESOLVE   전원 발사 → 마지막 포탄 소멸/착탄까지 탄도 틱 진행
+PHASE_RESOLVE   활성 플레이어 발사 → 마지막 자탄 소멸/착탄까지 탄도 틱 진행
 PHASE_SETTLE    폭발 적용 → 자동자 정착까지
 PHASE_APPLY     탱크 재배치, 피해 정산, 사망 판정
-PHASE_ROUND_END 라운드 종료 판정 → 상점 or 다음 턴
+PHASE_ROUND_END 라운드 종료 판정 → 상점 or 다음 생존 슬롯
 ```
 
 각 페이즈는 **결정론적으로 종료 조건에 도달**한다. 실시간 타이머는 `PHASE_AIM`에만 존재하며,
@@ -359,7 +367,7 @@ PHASE_ROUND_END 라운드 종료 판정 → 상점 or 다음 턴
 | `TICK_HZ` | 60 | Hz | |
 | `GRAVITY` | 12 | subpx/tick² | **= 2700 px/s²** (`12 ÷ 16 × 60²`). 아래 §8.1 |
 | `POWER_SCALE` | **624** | — | B12 확정 — 최대 파워 45° 사거리 = 맵 폭. `v0 = 624000 >> 10 = 609` |
-| `WIND_MAX` | 2 (잠정) | subpx/tick² | 편차/사거리 = `WIND_MAX/GRAVITY`. 2 → 45° 에서 17%. §8.2 |
+| `WIND_MAX` | **4** | subpx/tick² | 직접 플레이 강풍 기준. 45° 최대 편차 33%. §8.2 |
 | `DRAG` | 0 | Q16 | §4.5 |
 | `MAX_FLIGHT_TICKS` | 1800 | tick | 30초 |
 | `SELF_HIT_IGNORE` | 8 | tick | 발사 직후 자폭 방지 |
@@ -369,7 +377,7 @@ PHASE_ROUND_END 라운드 종료 판정 → 상점 or 다음 턴
 | `FALL_DAMAGE_NUM` / `FALL_DAMAGE_SHIFT` | **미확정** | — | §6.1 수식이 요구한다 |
 | `DAMAGE_SHIFT` | 무기별 | — | `= log2(blastRadius)`. §5.1 |
 | `AIM_SECONDS` | 20 | s | 1턴차는 30 |
-| `BARREL_LEN` | **미확정** | subpx | 포신 끝 위치 산출용. §4.1 |
+| `BARREL_LEN` | **160** | subpx | 10px. 짧고 굵은 곡사포 포신. §4.1 |
 
 > 지형 자동자 상수(`SUBSTEPS`, `SLIDE_CHANCE_*`, `MAX_SETTLE_STEPS`)는 `docs/terrain.md` §4 에 있다.
 > `SUBSTEPS` 는 **시뮬레이션 상수가 아니라 표현 상수**다 (`terrain.md` §3.4).
@@ -428,12 +436,13 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
 | `WIND_MAX` | 45° 편차 비율 | 80° 고각 편차 (사거리 649px) |
 |---|---|---|
 | 6 (중력의 절반) | **50%** | 사거리의 **285%** |
+| 4 | **33%** | 1,234 px = 190% |
 | 2 (중력의 1/6) | **17%** | 617 px = 95% |
 | 1 (중력의 1/8) | **8%** | 308 px = 48% |
 
 `WIND_MAX = 6` 이면 고각 사격은 조준값이 아니라 바람이 착탄점을 결정한다.
-**"중력의 절반" 이라는 근거는 삭제한다.** 편차 목표를 45° 기준 10~15% 로 잡으면
-`WIND_MAX ≈ 1~2` (중력의 1/12 ~ 1/6) 다. **잠정 2** 로 두었다.
+수학적 안정값은 `1~2`지만 직접 플레이에서 바람이 약하게 느껴져 **4로 확정**했다. 현재 수치를
+항상 표시하고, 90%는 완만한 변화로 유지하며 10%의 돌풍에서만 최대 3칸 급변하게 해 대응 가능성을 남긴다.
 
 **고각의 편차 폭주는 상수만으로 해결되지 않는다.** `WIND_MAX = 1` 이어도 80° 에서 47% 다.
 바람은 체공 시간의 제곱으로 누적되는데 고각은 체공이 길고 사거리가 짧기 때문이다.
@@ -465,6 +474,9 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
 | `test_cross_sim` | 골든 20개를 **스텝** 단위로 재생, 표본마다 체크섬·질량 비교 |
 | `test_replay_stable` | 장기 골든을 **턴** 단위로 재생 (60턴 / 1000턴은 `slow`) |
 | `test_long_replay_is_long_enough` | 턴이 no-op 인 리플레이로 완료 조건을 형식만 채우지 못하게 |
+| `test_cross_sim_mapgen` | 사이드카 없이 `mapSeed`에서 초기 격자·정착·스폰 대조 |
+| `test_cross_sim_shots` | 탄도·무기·피해·재배치 40발 대조 |
+| `test_cross_sim_match` | intent·상점·라운드 전환을 포함한 두 라운드 대조 |
 
 **대조 단위가 두 가지인 이유.** 턴 = `carve/deposit → 정착 → 연결성 재검사` 루프 전체다
 (`terrain.md` §6.1). 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을 잡은 전례가 있다 —
@@ -482,12 +494,12 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
 
 - [x] `GRAVITY` / `POWER_SCALE` — B12 확정(사거리를 맵 폭에 맞춘다)에 따라 `POWER_SCALE = 624`.
       실측 1,899 px = 맵 폭의 98.9% 이고 Python·TS 가 같은 값을 낸다. §8.1, `decisions.md` C3
-- [ ] `WIND_MAX` — "중력의 절반"은 검산과 반대다. §8.2, `decisions.md` C4
-- [ ] 포신 끝 위치 산출 규칙과 `BARREL_LEN` — §4.1
+- [x] `WIND_MAX = 4` — 직접 플레이 강풍 기준. 현재 수치 상시 표시 + 드문 돌풍. §8.2, `decisions.md` C4
+- [ ] 발사점이 지형에 파묻혔을 때 처리 — §4.1 (`BARREL_LEN=160`은 확정)
 - [ ] `DAMAGE_SHIFT` 와 무기별 `blastRadius` 의 2의 거듭제곱 제약 — §5.1, `decisions.md` C1
 - [ ] 서브스텝 이동량 하한 (`steps` 식 수정 여부) — §4.3
 - [ ] 탱크가 경사에서 미끄러지는가 — §6.1 vs `game-design.md` §8.1, `decisions.md` B5
-- [ ] 탱크 이동·아이템 사용을 어느 페이즈에서 처리하는가 — §7, `decisions.md` B4
+- [x] 탱크 이동·아이템 사용 — 발사 전 슬롯 순 이동, `intent.moveDx/useShield`. `docs/match.md` §5
 - [ ] 순차 턴 모드를 지원하는가 — §7, `decisions.md` C7
 - [ ] 폭발 넉백의 존재 여부 — §5.2 의 근거 문장이 넉백을 전제하는데 규칙이 어디에도 없다
 - [ ] 매몰 판정 임계값(80%)과 지속 피해량

@@ -20,7 +20,7 @@
    임시로 값을 정한 것 — 전부 `docs/decisions.md` 대기 항목이다
 
    · POWER_SCALE / GRAVITY / WIND_MAX  → C3 · C4. 슬라이더로 조절한다
-   · BARREL_LEN                        → simulation.md §4.1 미결. 288 subpx (18px)
+   · BARREL_LEN                        → simulation.md §4.1 확정. 160 subpx (10px)
    · 표준탄 damage / blastRadius        → C1. blastRadius 는 2의 거듭제곱 강제
    · FALL_DAMAGE_*                     → C8
    · 매몰 임계 80%                      → C8. 해제 규칙은 B13 (여기서는 매 턴 재평가)
@@ -44,11 +44,11 @@
   var CFG = {
     gravity: 12,                        // subpx/tick²
     powerScale: 624,                    // B12 확정. 최대 파워 45° → 맵 폭의 98.9% (1899px)
-    windMax: 2,                         // C4 추천값 (중력의 1/6)
+    windMax: 2,                         // 강풍·돌풍 체감을 위한 상향값
     dragQ16: 0,                         // §4.5 — 항력 없음
     maxFlightTicks: 1800,               // 30초
     selfHitIgnore: 8,
-    barrelLen: 288,                     // 18px. simulation.md §4.1 미결
+    barrelLen: 288,                     // 10px. 짧고 굵은 곡사포 포신
     fallSafePx: 24,
     fallDamageNum: 1,
     fallDamageShift: 1,                 // (fallPx - 24) / 2
@@ -57,6 +57,7 @@
   };
 
   var TANK_W = 384, TANK_H = 256;       // 24 × 16 px
+  var TANK_TILT_MAX10 = 100, TANK_TILT_SAMPLE = (TANK_W * 7) >> 4;
   var MAX_HP = 100;
 
   /* ── 표준탄. 무기 테이블 스키마는 decisions.md C1 ──────────────────── */
@@ -207,11 +208,56 @@
     return (x / SUBPX) | 0;
   }
 
-  /* 포신 끝 위치 (simulation.md §4.1). 회전 중심은 탱크 상단 중앙으로 잡는다 */
-  function muzzle(tank, angle10) {
+  function supportYAtTank(tank, xSub) {
+    var cx = xSub >> CELL_SHIFT;
+    if (cx < 0) cx = 0; else if (cx > W - 1) cx = W - 1;
+    var foot = tank.y >> CELL_SHIFT;
+    if (foot < 0) foot = 0; else if (foot > H - 1) foot = H - 1;
+    var from = foot > 8 ? foot - 8 : 0, to = foot + 16 < H ? foot + 16 : H - 1;
+    for (var y = from; y <= to; y++) if (grid[y * W + cx] !== EMPTY) return y;
+    return foot;
+  }
+
+  function tankTilt10(tank) {
+    var leftX = (tank.x - TANK_TILT_SAMPLE) >> CELL_SHIFT;
+    var rightX = (tank.x + TANK_TILT_SAMPLE) >> CELL_SHIFT;
+    if (leftX < 0) leftX = 0; if (rightX > W - 1) rightX = W - 1;
+    var run = rightX - leftX;
+    if (run <= 0) return 0;
+    var rise = supportYAtTank(tank, tank.x + TANK_TILT_SAMPLE) - supportYAtTank(tank, tank.x - TANK_TILT_SAMPLE);
+    if (rise === 0) return 0;
+    var magnitude = rise < 0 ? -rise : rise, bestAngle = 0, bestError = 0x7fffffff;
+    for (var a = 0; a <= TANK_TILT_MAX10; a++) {
+      var raw = magnitude * COS[a] - run * SIN[a], error = raw < 0 ? -raw : raw;
+      if (error < bestError) { bestError = error; bestAngle = a; }
+    }
+    return rise < 0 ? -bestAngle : bestAngle;
+  }
+
+  function effectiveAngle10(tank, angle10) {
+    var out = angle10 - tankTilt10(tank);
+    return out < 0 ? 0 : (out > 1800 ? 1800 : out);
+  }
+
+  function shotPose(tank, angle10) {
+    var tilt10 = tankTilt10(tank), absTilt10 = tilt10 < 0 ? -tilt10 : tilt10;
+    var tiltSin = SIN[absTilt10]; if (tilt10 < 0) tiltSin = -tiltSin;
+    var anchorX = tank.x + ((TANK_H * tiltSin) >> 12);
+    var anchorY = tank.y - ((TANK_H * COS[absTilt10]) >> 12);
+    var shotAngle10 = angle10 - tilt10;
+    if (shotAngle10 < 0) shotAngle10 = 0; else if (shotAngle10 > 1800) shotAngle10 = 1800;
     return {
-      x: tank.x + ((CFG.barrelLen * COS[angle10]) >> 12),
-      y: (tank.y - TANK_H) - ((CFG.barrelLen * SIN[angle10]) >> 12),
+      x: anchorX + ((CFG.barrelLen * COS[shotAngle10]) >> 12),
+      y: anchorY - ((CFG.barrelLen * SIN[shotAngle10]) >> 12),
+      angle10: shotAngle10, tilt10: tilt10,
+    };
+  }
+
+  function muzzle(tank, angle10) {
+    var pose = shotPose(tank, angle10);
+    return {
+      x: pose.x,
+      y: pose.y,
     };
   }
 
@@ -307,10 +353,11 @@
   root.TalusPhys = {
     SUBPX: SUBPX, CELL_SUBPX: CELL_SUBPX, CELL_SHIFT: CELL_SHIFT,
     MAP_W_SUB: MAP_W_SUB, MAP_H_SUB: MAP_H_SUB,
-    TANK_W: TANK_W, TANK_H: TANK_H, MAX_HP: MAX_HP,
+    TANK_W: TANK_W, TANK_H: TANK_H, MAX_HP: MAX_HP, TANK_TILT_MAX10: TANK_TILT_MAX10,
     CFG: CFG, STANDARD: STANDARD,
     SIN: SIN, COS: COS, isqrt: isqrt,
     simulateShot: simulateShot, continueShot: continueShot,
+    tankTilt10: tankTilt10, effectiveAngle10: effectiveAngle10, shotPose: shotPose,
     muzzle: muzzle, flatRangePx: flatRangePx,
     computeDamage: computeDamage,
     reseatTank: reseatTank, supported: supported,

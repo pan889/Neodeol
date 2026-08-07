@@ -1,31 +1,21 @@
-"""FastAPI 앱 — 개발용 최소 표면.
-
-지금(Phase 0) 이 앱이 하는 일은 셋뿐이다.
-
-  1. Phase 0 샌드박스를 `/sandbox/` 로 서빙한다. 빌드 도구 없이 브라우저에서
-     바로 열리는 단일 HTML 이라 정적 서빙만으로 충분하다.
-  2. `/healthz` (liveness) 와 `/readyz` (Redis·PostgreSQL 연결) 를 제공한다.
-  3. `/version` 으로 `SIM_VERSION` 을 노출한다. 클라이언트가 접속할 때 이 값을
-     대조해 서로 다른 규칙으로 계산하고 있지 않은지 확인한다 (docs/netcode.md).
-
-**WebSocket 과 룸 로직은 여기 없다.** `docs/roadmap.md` Phase 4 이며, 그 전에
-`sim/` 이 골든 리플레이로 검증되어야 한다. 순서를 뒤집으면 "가끔 지형이 다르게
-보임" 류의 재현 불가능한 버그를 만들게 된다 (roadmap Phase 3 경고).
-"""
+"""FastAPI 앱 — 개발 도구, 헬스체크, Phase 4 코드형 룸 서버."""
 
 from __future__ import annotations
 
 import asyncio
 import os
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from talus import __version__, constants
+from talus.net.multiplayer import router as multiplayer_router
+from talus.room import RoomManager
 from talus.store import check_postgres, check_redis
 
 BOOT_TIME = time.time()
@@ -34,6 +24,32 @@ REDIS_URL = os.environ.get("TALUS_REDIS_URL", "redis://127.0.0.1:6379/0")
 PG_DSN = os.environ.get("TALUS_PG_DSN", "postgresql://talus:talus@127.0.0.1:5432/talus")
 STATIC_DIR = Path(os.environ.get("TALUS_STATIC_DIR", "tools"))
 ENV = os.environ.get("TALUS_ENV", "dev")
+SIM_WORKERS = int(os.environ.get("TALUS_SIM_WORKERS", "2"))
+
+
+def _find_trig_table() -> Path:
+    configured = os.environ.get("TALUS_TRIG_TABLE")
+    candidates = [
+        Path(configured) if configured else None,
+        Path.cwd() / "tables" / "trig.bin",
+        Path.cwd().parent / "tables" / "trig.bin",
+        Path(__file__).resolve().parents[3] / "tables" / "trig.bin",
+        Path(__file__).resolve().parents[4] / "tables" / "trig.bin",
+    ]
+    for candidate in candidates:
+        if candidate is not None and candidate.is_file():
+            return candidate
+    raise RuntimeError("tables/trig.bin 을 찾을 수 없다")
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    manager = RoomManager(_find_trig_table(), sim_workers=SIM_WORKERS)
+    application.state.room_manager = manager
+    try:
+        yield
+    finally:
+        await manager.close()
 
 app = FastAPI(
     title="Talus",
@@ -41,7 +57,9 @@ app = FastAPI(
     description="턴제 포병 대전 게임 서버 (개발 스캐폴드)",
     docs_url="/docs-api",
     redoc_url=None,
+    lifespan=lifespan,
 )
+app.include_router(multiplayer_router)
 
 
 # ── 헬스 ────────────────────────────────────────────────────────────────
@@ -112,15 +130,36 @@ async def deps() -> dict[str, Any]:
     return out
 
 
+@app.get("/tables/trig.bin", response_class=FileResponse, tags=["dev"])
+async def trig_table() -> FileResponse:
+    """브라우저 lockstep 클라이언트가 서버와 같은 Q12 삼각함수 표를 받는다."""
+    return FileResponse(_find_trig_table(), media_type="application/octet-stream")
+
+
 # ── 루트 ────────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse, tags=["dev"])
 async def index() -> str:
     sandbox = "/sandbox/" if (STATIC_DIR / "sandbox" / "index.html").is_file() else None
-    link = (
-        f'<li><a href="{sandbox}">Phase 0 — 모래 자동자 샌드박스</a></li>'
-        if sandbox
-        else "<li><em>샌드박스를 찾을 수 없다 (TALUS_STATIC_DIR 확인)</em></li>"
+    prototype = (
+        "/tools/prototype/" if (STATIC_DIR / "prototype" / "index.html").is_file() else None
     )
+    multiplayer = (
+        "/tools/multiplayer/" if (STATIC_DIR / "multiplayer" / "index.html").is_file() else None
+    )
+    links = []
+    if sandbox:
+        links.append(f'<li><a href="{sandbox}">Phase 0 — 모래 자동자 샌드박스</a></li>')
+    if prototype:
+        links.append(
+            f'<li><a href="{prototype}">Phase 1 — 플레이어블 포병 프로토타입</a></li>'
+        )
+    if multiplayer:
+        links.append(
+            f'<li><a href="{multiplayer}">Phase 4 — 멀티플레이 네트워크 하네스</a></li>'
+        )
+    if not links:
+        links.append("<li><em>개발 도구를 찾을 수 없다 (TALUS_STATIC_DIR 확인)</em></li>")
+    tool_links = "\n".join(links)
     return f"""<!doctype html><meta charset=utf-8><title>Talus dev</title>
 <style>
  body{{background:#120F17;color:#E8DFD2;font:14px/1.7 ui-sans-serif,system-ui;padding:40px;max-width:640px}}
@@ -131,14 +170,14 @@ async def index() -> str:
 <h1>Talus — dev server</h1>
 <p class=dim>env <code>{ENV}</code> · app <code>{__version__}</code> · sim <code>{constants.SIM_VERSION}</code></p>
 <ul>
-{link}
+{tool_links}
 <li><a href="/readyz">/readyz</a> — Redis · PostgreSQL 연결</li>
 <li><a href="/version">/version</a> — 시뮬레이션 규칙 신원</li>
 <li><a href="/constants">/constants</a> — 상수 전체</li>
 <li><a href="/deps">/deps</a> — 라이브러리 버전</li>
 <li><a href="/docs-api">/docs-api</a> — OpenAPI</li>
 </ul>
-<p class=dim>WebSocket 과 룸 로직은 Phase 4다. docs/roadmap.md 참조.</p>
+<p class=dim>Phase 4 기반: 코드형 룸 · msgpack WebSocket · 권위 턴 · 재접속.</p>
 """
 
 

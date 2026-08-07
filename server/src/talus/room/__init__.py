@@ -3,3 +3,8 @@
 `docs/netcode.md` §3 을 따른다. `sim/` 이 완성되고 골든 리플레이가
 Python·TS 양쪽에서 동일 체크섬을 낼 때까지 착수하지 않는다.
 """
+"""멀티플레이 룸 수명주기."""
+
+from .service import RoomManager
+
+__all__ = ["RoomManager"]

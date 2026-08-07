@@ -26,6 +26,8 @@ export const MAP_H_SUB = H * CELL_SUBPX; // 17280
 export const TANK_W = 384; // 24 px
 export const TANK_H = 256; // 16 px
 export const MAX_HP = 100;
+export const TANK_TILT_MAX10 = 140; // ±14.0°
+const TANK_TILT_SAMPLE = (TANK_W * 7) >> 4;
 
 /* ── 상수 (§8). `server/src/talus/constants.py` 가 기계 판독 사본이다 ──── */
 export interface BallisticsConfig {
@@ -46,11 +48,11 @@ export interface BallisticsConfig {
 export const CFG: BallisticsConfig = {
   gravity: 12,
   powerScale: 624, // B12 확정 — 최대 파워 45° 사거리 = 맵 폭
-  windMax: 2,
+  windMax: 4,
   dragQ16: 0,
   maxFlightTicks: 1800,
   selfHitIgnore: 8,
-  barrelLen: 288,
+  barrelLen: 160,
   fallSafePx: 24,
   fallDamageNum: 1,
   fallDamageShift: 1,
@@ -241,11 +243,70 @@ export function flatRangePx(angle10: number, power: number, wind: number): numbe
   return x >> PX_SHIFT;
 }
 
-/** 포신 끝 위치 (§4.1). 회전 중심은 탱크 상단 중앙 */
-export function muzzle(tank: Tank, angle10: number): { x: number; y: number } {
+function supportYAtTank(tank: Tank, xSub: number): number {
+  const cx = clampInt(xSub >> CELL_SHIFT, 0, W - 1);
+  const foot = clampInt(tank.y >> CELL_SHIFT, 0, H - 1);
+  const from = foot > 8 ? foot - 8 : 0;
+  const to = foot + 16 < H ? foot + 16 : H - 1;
+  for (let y = from; y <= to; y++) if (grid[y * W + cx] !== EMPTY) return y;
+  return foot;
+}
+
+/** 좌우 궤도 지지점으로 계산한 차체 경사. +는 화면 기준 시계 방향. */
+export function tankTilt10(tank: Tank): number {
+  const leftX = clampInt((tank.x - TANK_TILT_SAMPLE) >> CELL_SHIFT, 0, W - 1);
+  const rightX = clampInt((tank.x + TANK_TILT_SAMPLE) >> CELL_SHIFT, 0, W - 1);
+  const run = rightX - leftX;
+  if (run <= 0) return 0;
+  const rise = supportYAtTank(tank, tank.x + TANK_TILT_SAMPLE)
+    - supportYAtTank(tank, tank.x - TANK_TILT_SAMPLE);
+  if (rise === 0) return 0;
+  const magnitude = iabs(rise);
+  let bestAngle = 0;
+  let bestError = 0x7fffffff;
+  for (let angle10 = 0; angle10 <= TANK_TILT_MAX10; angle10++) {
+    const error = iabs(magnitude * COS(angle10) - run * SIN(angle10));
+    if (error < bestError) {
+      bestError = error;
+      bestAngle = angle10;
+    }
+  }
+  return rise < 0 ? -bestAngle : bestAngle;
+}
+
+/** 조준 입력은 차체 기준 상대각, 탄도는 월드 절대각으로 변환한다. */
+export function effectiveAngle10(tank: Tank, angle10: number): number {
+  return clampInt(angle10 - tankTilt10(tank), 0, 1800);
+}
+
+export interface ShotPose {
+  x: number;
+  y: number;
+  angle10: number;
+  tilt10: number;
+}
+
+/** 기울어진 포탑 중심과 실제 월드 발사각으로 계산한 포신 끝. */
+export function shotPose(tank: Tank, angle10: number): ShotPose {
+  const tilt10 = tankTilt10(tank);
+  const absTilt10 = iabs(tilt10);
+  const tiltSin = tilt10 < 0 ? -SIN(absTilt10) : SIN(absTilt10);
+  const anchorX = tank.x + ((TANK_H * tiltSin) >> 12);
+  const anchorY = tank.y - ((TANK_H * COS(absTilt10)) >> 12);
+  const shotAngle10 = clampInt(angle10 - tilt10, 0, 1800);
   return {
-    x: tank.x + ((CFG.barrelLen * COS(angle10)) >> 12),
-    y: tank.y - TANK_H - ((CFG.barrelLen * SIN(angle10)) >> 12),
+    x: anchorX + ((CFG.barrelLen * COS(shotAngle10)) >> 12),
+    y: anchorY - ((CFG.barrelLen * SIN(shotAngle10)) >> 12),
+    angle10: shotAngle10,
+    tilt10,
+  };
+}
+
+export function muzzle(tank: Tank, angle10: number): { x: number; y: number } {
+  const pose = shotPose(tank, angle10);
+  return {
+    x: pose.x,
+    y: pose.y,
   };
 }
 

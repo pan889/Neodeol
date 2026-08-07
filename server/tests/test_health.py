@@ -35,7 +35,7 @@ async def test_version_exposes_sim_identity(client: httpx.AsyncClient) -> None:
     body = r.json()
     assert len(body["sim_version"]) == 16
     assert body["grid"] == {"w": 960, "h": 540, "cell_px": 2}
-    # Phase 0·1 이 끝나지 않았으므로 잠정 상수가 남아 있어야 정상이다.
+    # Phase 3 구현은 끝났지만 밸런싱 값은 아직 잠정이다.
     # 이 목록이 비면 밸런싱 기준선이 잡혔다는 뜻이고, 그때 이 단정을 뒤집는다.
     assert "GRAVITY" in body["provisional"]
     assert "MAX_SETTLE_STEPS" in body["provisional"]
@@ -57,3 +57,37 @@ async def test_sandbox_is_served(client: httpx.AsyncClient) -> None:
         pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
     assert r.status_code == 200
     assert "모래 자동자 샌드박스" in r.text
+
+
+async def test_prototype_is_linked_and_served(client: httpx.AsyncClient) -> None:
+    """로컬 Docker 첫 화면에서 플레이어블 프로토타입으로 바로 들어갈 수 있다."""
+    async with client as c:
+        root = await c.get("/")
+        prototype = await c.get("/tools/prototype/")
+    if prototype.status_code == 404:
+        pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
+    assert root.status_code == 200
+    assert "/tools/prototype/" in root.text
+    assert prototype.status_code == 200
+    assert "Talus" in prototype.text
+
+
+async def test_multiplayer_harness_is_linked_and_served(client: httpx.AsyncClient) -> None:
+    """Phase 4 네트워크 하네스를 로컬 첫 화면에서 바로 열 수 있다."""
+    async with client as c:
+        root = await c.get("/")
+        multiplayer = await c.get("/tools/multiplayer/")
+    if multiplayer.status_code == 404:
+        pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
+    assert root.status_code == 200
+    assert "/tools/multiplayer/" in root.text
+    assert multiplayer.status_code == 200
+    assert "MULTIPLAYER NETWORK HARNESS" in multiplayer.text
+
+
+async def test_trig_table_is_served_for_browser_lockstep(client: httpx.AsyncClient) -> None:
+    async with client as c:
+        response = await c.get("/tables/trig.bin")
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("application/octet-stream")
+    assert len(response.content) == 7204

@@ -31,6 +31,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from talus import constants
+
 from . import trig
 from .intmath import clamp_int, floor_div, iabs, isqrt
 from .terrain import EMPTY, H, W, grid
@@ -46,6 +48,8 @@ MAP_H_SUB = H * CELL_SUBPX  # 17280
 TANK_W = 384  # 24 px
 TANK_H = 256  # 16 px
 MAX_HP = 100
+TANK_TILT_MAX10 = 140  # ±14.0°
+TANK_TILT_SAMPLE = (TANK_W * 7) >> 4
 
 
 # ── 상수 (§8). `talus/constants.py` 가 기계 판독 사본이다 ──────────────────
@@ -53,11 +57,11 @@ MAX_HP = 100
 class BallisticsConfig:
     gravity: int = 12
     power_scale: int = 624  # B12 확정 — 최대 파워 45° 사거리 = 맵 폭
-    wind_max: int = 2
+    wind_max: int = 4
     drag_q16: int = 0
     max_flight_ticks: int = 1800
     self_hit_ignore: int = 8
-    barrel_len: int = 288
+    barrel_len: int = constants.BARREL_LEN_SUBPX
     fall_safe_px: int = 24
     fall_damage_num: int = 1
     fall_damage_shift: int = 1
@@ -238,12 +242,76 @@ def flat_range_px(angle10: int, power: int, wind: int) -> int:
     return x >> PX_SHIFT
 
 
-def muzzle(tank: Tank, angle10: int) -> tuple[int, int]:
-    """포신 끝 위치 (§4.1). 회전 중심은 탱크 상단 중앙."""
-    return (
-        tank.x + ((CFG.barrel_len * trig.cos_q12(angle10)) >> 12),
-        tank.y - TANK_H - ((CFG.barrel_len * trig.sin_q12(angle10)) >> 12),
+def _support_y_at_tank(tank: Tank, x_sub: int) -> int:
+    cx = clamp_int(x_sub >> CELL_SHIFT, 0, W - 1)
+    foot = clamp_int(tank.y >> CELL_SHIFT, 0, H - 1)
+    start = max(0, foot - 8)
+    end = min(H - 1, foot + 16)
+    for y in range(start, end + 1):
+        if grid[y * W + cx] != EMPTY:
+            return y
+    return foot
+
+
+def tank_tilt10(tank: Tank) -> int:
+    """좌우 궤도 지지점으로 계산한 차체 경사. +는 화면 기준 시계 방향."""
+    left_x = clamp_int((tank.x - TANK_TILT_SAMPLE) >> CELL_SHIFT, 0, W - 1)
+    right_x = clamp_int((tank.x + TANK_TILT_SAMPLE) >> CELL_SHIFT, 0, W - 1)
+    run = right_x - left_x
+    if run <= 0:
+        return 0
+    rise = _support_y_at_tank(tank, tank.x + TANK_TILT_SAMPLE) - _support_y_at_tank(
+        tank, tank.x - TANK_TILT_SAMPLE
     )
+    if rise == 0:
+        return 0
+    magnitude = iabs(rise)
+    best_angle = 0
+    best_error = 0x7FFFFFFF
+    for angle10 in range(TANK_TILT_MAX10 + 1):
+        error = iabs(
+            magnitude * trig.cos_q12(angle10) - run * trig.sin_q12(angle10)
+        )
+        if error < best_error:
+            best_error = error
+            best_angle = angle10
+    return -best_angle if rise < 0 else best_angle
+
+
+def effective_angle10(tank: Tank, angle10: int) -> int:
+    """차체 기준 상대 조준각을 월드 절대각으로 변환한다."""
+    return clamp_int(angle10 - tank_tilt10(tank), 0, 1800)
+
+
+@dataclass(frozen=True)
+class ShotPose:
+    x: int
+    y: int
+    angle10: int
+    tilt10: int
+
+
+def shot_pose(tank: Tank, angle10: int) -> ShotPose:
+    """기울어진 포탑 중심과 실제 월드 발사각으로 계산한 포신 끝."""
+    tilt10 = tank_tilt10(tank)
+    abs_tilt10 = iabs(tilt10)
+    tilt_sin = trig.sin_q12(abs_tilt10)
+    if tilt10 < 0:
+        tilt_sin = -tilt_sin
+    anchor_x = tank.x + ((TANK_H * tilt_sin) >> 12)
+    anchor_y = tank.y - ((TANK_H * trig.cos_q12(abs_tilt10)) >> 12)
+    shot_angle10 = clamp_int(angle10 - tilt10, 0, 1800)
+    return ShotPose(
+        x=anchor_x + ((CFG.barrel_len * trig.cos_q12(shot_angle10)) >> 12),
+        y=anchor_y - ((CFG.barrel_len * trig.sin_q12(shot_angle10)) >> 12),
+        angle10=shot_angle10,
+        tilt10=tilt10,
+    )
+
+
+def muzzle(tank: Tank, angle10: int) -> tuple[int, int]:
+    pose = shot_pose(tank, angle10)
+    return pose.x, pose.y
 
 
 # ══ 피해 (§5.1) ═══════════════════════════════════════════════════════════

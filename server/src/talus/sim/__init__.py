@@ -6,6 +6,10 @@
 
     intmath.py   floor_div · isqrt · hash32(벡터/스칼라) · fnv1a32
     terrain.py   모래 자동자, 폭발 카빙, 흙 쌓기, 연결성 검사
+    ballistics.py  탄도 적분, 피해, 탱크 재배치
+    weapons.py     무기 8종과 특수 발동
+    mapgen.py      초기 격자와 스폰 생성
+    match.py       라운드·턴·경제·승패
 
 절대 규칙 (CLAUDE.md)
 

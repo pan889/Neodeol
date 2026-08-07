@@ -9,7 +9,7 @@
 
 ```
 클라이언트 → 서버 :  이번 턴의 의도 (각도, 파워, 무기)  ... 턴당 1회, ~12바이트
-서버 → 클라이언트 :  전원의 의도 + 시드 + 체크섬        ... 턴당 1회, 인원×12 + 12바이트
+서버 → 클라이언트 :  활성 슬롯의 의도 + 시드 + 체크섬    ... 턴당 1회, ~24바이트
 ```
 
 **지형을 네트워크로 보내지 않는다** (절대 규칙 4).
@@ -36,24 +36,28 @@
 
 ## 3. 턴 수명주기
 
+매치 시작 시 서버는 `matchInit` 뒤 **초기 `fullState` 한 번**을 보내고 첫 `turnBegin`을 연다.
+Canvas 클라이언트가 맵 생성 구현이나 로딩 타이밍과 무관하게 동일한 기준 격자에서 시작하게 하는
+부트스트랩 경로다. 이후 정상 턴에서는 격자를 보내지 않고 intent와 결과 체크섬만 교환한다.
+
 ```
        ┌─────────────────────────────────────────┐
        │  TURN_BEGIN                              │
-       │  서버 → 전원 : turnNo, deadline, wind    │
+       │  서버 → 전원 : turnNo, activeSlot,       │
+       │               deadline, wind             │
        └──────────────────┬──────────────────────┘
                           ↓
        ┌─────────────────────────────────────────┐
        │  AIM  (20s)                              │
-       │  클라 → 서버 : intent                    │
-       │  서버는 확정 여부만 브로드캐스트          │
-       │  (누가 조준을 끝냈는지는 보여준다.        │
-       │   무엇을 조준했는지는 절대 안 보낸다)     │
+       │  활성 클라 → 서버 : intent               │
+       │  다른 클라는 관전만 한다                  │
        └──────────────────┬──────────────────────┘
-                          ↓ 전원 확정 or 타임아웃
+                          ↓ 확정 or 타임아웃
        ┌─────────────────────────────────────────┐
        │  TURN_RESOLVE                            │
-       │  서버 → 전원 : 전원 intent + turnSeed    │
-       │  서버: 즉시 전체 해결 계산                │
+       │  서버 → 전원 : activeSlot, intent,        │
+       │               turnSeed                   │
+       │  서버: 한 발의 전체 해결 계산             │
        │  클라: 같은 계산을 60fps로 재생           │
        └──────────────────┬──────────────────────┘
                           ↓ 서버 계산 완료
@@ -78,10 +82,11 @@ next_turn_delay = max(모든 클라의 예상 재생 시간, 서버 최소 대�
 
 느린 클라이언트 하나가 판 전체를 잡아두면 안 된다. 재생을 못 따라온 클라는 결과 상태로 스냅한다.
 
-### 3.2 조준 내용을 중계하지 않는 이유
+### 3.2 조준 초안을 중계하지 않는 이유
 
-`AIM` 단계에서 서버는 **"확정했다"는 사실만** 브로드캐스트한다.
-각도·파워를 중계하면 devtools 한 줄로 상대 조준값을 읽고 그 자리에서 피할 수 있다. 동시 턴 구조의 심리전이 통째로 무너진다.
+`AIM` 단계에서는 활성 플레이어의 확정 전 각도·파워를 중계하지 않는다. 초안은 매 프레임 바뀌는
+표현 상태이고 lockstep 입력이 아니기 때문이다. 확정 또는 타임아웃 뒤 `TURN_RESOLVE`에서 intent를
+전원에게 공개하며, 다른 플레이어는 그 한 발의 비행·착탄·정착을 본 뒤 자기 턴을 시작한다.
 
 ---
 
@@ -98,8 +103,8 @@ next_turn_delay = max(모든 클라의 예상 재생 시간, 서버 최소 대�
 ### 4.2 전체 상태 페이로드
 
 ```
-mapSeed, turnNo, phase, 전원 상태(위치·HP·인벤토리·골드), wind
-+ 지형 격자 (zstd 압축)
+mapSeed, turnNo, activeSlot, phase, 전원 상태(위치·HP·인벤토리·골드), wind
++ 지형 격자 (gzip 압축)
 ```
 
 격자는 압축 전 **518,400 바이트**이고 값이 6종(`EMPTY` 포함)뿐이며 공간 상관이 극단적으로 높다.
@@ -123,16 +128,16 @@ mapSeed, turnNo, phase, 전원 상태(위치·HP·인벤토리·골드), wind
 마스크와 스텝 카운터는 턴을 넘기지 않으므로 페이로드에 넣지 않는다.
 격자에서 마스크를 재계산해서도 안 된다 — 서버와 갈라진다.
 
-`uAge` 격자를 함께 보낼지는 `decisions.md` B8. **압축 알고리즘 선택은 §8 미결이다** —
-브라우저에는 표준 API 로 노출된 zstd 디코더가 없다.
-리싱크가 빈번하지 않은 한 문제되지 않는다.
+`uAge` 격자를 함께 보낼지는 `decisions.md` B8. 격자는 **gzip**으로 압축한다. 브라우저의 표준
+`DecompressionStream("gzip")`을 바로 쓸 수 있고, 리싱크는 정상 턴 경로가 아니므로 zstd 대비 압축률
+차이보다 무의존성이 중요하다.
 
 ### 4.3 체크섬 불일치는 버그다
 
 조용히 복구만 하고 넘어가지 않는다.
 
 ```
-텔레메트리로 반드시 전송 : mapSeed, turnNo, 전원 intent, 클라 체크섬, 서버 체크섬,
+텔레메트리로 반드시 전송 : mapSeed, turnNo, activeSlot, intent, 클라 체크섬, 서버 체크섬,
                           클라 빌드 해시, 브라우저/OS
 ```
 
@@ -160,16 +165,15 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 | 시드·체크섬 | `uint32` | `terrain.md` §7.1 의 `hash32` 정의역, §7.2 |
 | 격자 | msgpack `bin`. 재질 enum 0~5 의 바이트 배열 | `terrain.md` §1·§2 |
 
-**배열은 슬롯 번호 오름차순으로 정렬해 보낸다.** `intents[]`, `players[]`, `scores[]` 전부 해당한다.
-근거: `terrain.md` §8 의 carve 순서가 슬롯 오름차순이므로, 와이어도 같은 순서면 수신 측이
-재정렬하지 않고 그대로 시뮬레이션에 넣을 수 있다. 순서를 규정하지 않으면 한쪽이 도착 순서로
-처리해 두 구현이 갈라진다. 슬롯 번호 자체의 정의·할당 주체는 `decisions.md` B10.
+**배열은 슬롯 번호 오름차순으로 정렬해 보낸다.** `players[]`, `scores[]`가 해당한다.
+한 턴의 `intent`는 `activeSlot` 한 명의 값이므로 배열이 아니다. 슬롯 번호 자체의 정의·할당 주체는
+`decisions.md` B10이다.
 
 **버전 필드는 두 개이고 수명주기가 다르다.**
 
 | 필드 | 무엇 | 언제 바뀌나 |
 |---|---|---|
-| `protocolVersion` | 와이어 형식 신원. `constants.PROTOCOL_VERSION` (현재 `1`) | 메시지 구조가 바뀔 때. 손으로 올린다 |
+| `protocolVersion` | 와이어 형식 신원. `constants.PROTOCOL_VERSION` (현재 `2`) | 메시지 구조가 바뀔 때. 손으로 올린다 |
 | `simVersion` | 시뮬레이션 규칙 신원. `constants.SIM_VERSION`. §7.3 | 상수가 하나라도 바뀔 때. 자동 |
 
 메시지 구조만 바뀐 릴리스에서 `simVersion` 이 흔들려선 안 되고, 상수만 바뀐 릴리스에서
@@ -178,19 +182,26 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 
 ### 5.1 클라이언트 → 서버
 
+WebSocket 경로는 `/ws/rooms/{roomCode}`다. 업그레이드 쿼리에 `token`, `protocolVersion`,
+`simVersion`, `buildHash`를 보낸다. 개발 로비의 token은 256비트 불투명 문자열이며 매치 시작 뒤에도
+같은 슬롯으로 재접속하는 키다.
+
 | `t` | 필드 | 타입·폭 | 단위·범위 | 설명 |
 |---|---|---|---|---|
-| `join` | `token` | str | — | JWT. 로비에서 발급 |
-| | `protocolVersion` | uint16 | — | `constants.PROTOCOL_VERSION`. 불일치면 룸에 넣지 않는다 |
-| | `simVersion` | str(16) | 소문자 hex | `constants.SIM_VERSION`. §7.3 |
-| | `buildHash` | str | — | 클라 빌드 신원. **대조하지 않는다.** 텔레메트리 전용(§4.3) |
 | `intent` | `turnNo` | uint32 | — | 현재 턴이어야 한다(§5.3) |
-| | `angle10` | uint16 | 데시도 0~1800 | 상한 1800 은 밸런스 값이 아니라 `trig.bin` 배열 경계다(`simulation.md` §3) |
+| | `activeSlot` | uint8 | 0~5 | `turnBegin.activeSlot`과 같아야 하며, 송신자의 슬롯이어야 한다 |
+| | `angle10` | uint16 | 차체 기준 데시도 0~1800 | 월드 발사각은 `angle10 - tankTilt10`. 상한은 `trig.bin` 배열 경계 |
 | | `power` | uint16 | 0~1000 | `v0 = (power * POWER_SCALE) >> 10` 의 정의역 |
 | | `weaponId` | uint8 | — | 무기 테이블 인덱스. 테이블 스키마는 `decisions.md` C1 |
-| `intentDraft` | `turnNo` | uint32 | — | 조준 중 표시용. **값은 보내지 않는다** |
-| `buy` | `roundNo` | uint8 | — | |
-| | `items[]` | uint8 배열 | weaponId | 서버 응답과 인벤토리 전파는 `decisions.md` B10 |
+| | `moveDx` | int16 | cell | 연료 이동 의도. `docs/match.md` §5.1 |
+| | `useShield` | bool | — | 이번 턴 차폐막 사용 |
+| `playbackDone` | `turnNo` | uint32 | — | 해당 턴의 로컬 재생 완료 |
+| | `checksum` | uint32 | — | 로컬 최종 격자 체크섬. 불일치면 `desync` + `fullState` |
+| `buy` | `roundNo` | uint8 | — | 현재 상점 라운드 |
+| | `kind` | str enum | `weapon`/`item` | 한 요청에 하나만 구매 |
+| | `weaponId` | uint8 | — | `kind=weapon`일 때 |
+| | `itemKey` | str enum | shield/parachute/fuel/anemo | `kind=item`일 때 |
+| `shopReady` | `roundNo` | uint8 | — | 구매 완료. 전원 ready 또는 30초 뒤 다음 라운드 |
 | `resyncReq` | `turnNo` | uint32 | — | |
 | | `myChecksum` | uint32 | — | 격자 체크섬 (`terrain.md` §7.2) |
 | `pong` | `t0` | uint64 | ms | `ping`(§5.2)이 보낸 값을 그대로 반사한다 |
@@ -198,41 +209,90 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 - **`join` 에 `simVersion` 이 없던 것은 표의 누락이다.** §7.3 이 이미 "join 시 클라가 simVersion 전송"을
   규정하고, 서버는 `GET /version` 으로 같은 값을 노출한다(`docs/development.md` §5).
   불일치 시 반환할 `error.code` 표는 `decisions.md` B10
-- `turnNo` 가 매치 전역인지 라운드마다 리셋인지는 `decisions.md` B10. 어느 쪽이든 uint32 로 충분하다
-- 탱크 이동·아이템 사용은 `intent` 에 필드를 더할 대상이다 — `decisions.md` B4
+- `turnNo` 는 매치 전역으로 증가하고 라운드가 바뀌어도 리셋하지 않는다 (`docs/match.md` §1.3)
 
 ### 5.2 서버 → 클라이언트
 
 | `t` | 필드 | 타입·폭 | 단위·범위 | 설명 |
 |---|---|---|---|---|
+| `hello` | `protocolVersion`/`simVersion` | uint16/str | — | WebSocket 핸드셰이크 승인과 규칙 신원 |
+| | `roomCode`/`mySlot`/`status` | str/uint8/str | — | 재접속한 룸·슬롯·현재 페이즈 |
+| `roomState` | `roomCode`/`status`/`maxPlayers` | str/str/uint8 | — | 로비와 연결 상태 스냅샷 |
+| | `players[]`/`telemetry` | 배열/map | — | 간소 플레이어 목록과 턴·리싱크 카운트 |
 | `matchInit` | `mapSeed` | uint32 | — | `terrain.md` §7.1 `hash32` 의 `seed` 인자와 같은 폭이어야 한다 |
 | | `mySlot` | uint8 | 0~5 | 수신자 자신의 슬롯. 슬롯 정의·할당은 `decisions.md` B10 |
 | | `players[]` | 배열 | 슬롯 오름차순 | 스키마는 `decisions.md` B10 |
 | | `rules` | map | — | 라운드 수·인원·모드. `decisions.md` B10 |
-| `turnBegin` | `turnNo` | uint32 | — | 매치 전역/라운드 리셋 여부는 `decisions.md` B10 |
-| | `deadlineMs` | uint | ms | 절대 시각인지 잔여인지 미결 — `decisions.md` B10 |
-| | `wind` | int16 | subpx/tick² | 파생값인지 서버 난수인지 `decisions.md` B3 |
-| `aimStatus` | `readyMask` | uint8 | 비트 i = 슬롯 i | 최대 인원 6(`game-design.md` §3)이므로 8비트로 충분하다 |
-| | `deadlineMs` | uint | ms | **마지막 1인 5초 단축을 전달하는 유일한 채널이다** |
+| `turnBegin` | `turnNo` | uint32 | — | 매치 전역 증가. 라운드에서 리셋하지 않음 |
+| | `activeSlot` | uint8 | 0~5 | 이번 턴에 intent를 낼 수 있는 유일한 슬롯 |
+| | `deadlineMs` | uint64 | Unix epoch ms | 라운드 첫 발 30초, 이후 20초 |
+| | `wind` | int16 | subpx/tick² | 직전 바람과 `mapSeed, turnNo`에서 파생한 이번 턴 권위값. 평상시 변화 1, 돌풍 최대 3 |
 | `turnResolve` | `turnNo` | uint32 | — | |
+| | `activeSlot` | uint8 | 0~5 | `turnBegin`과 같아야 한다 |
 | | `turnSeed` | uint32 | — | `= hash32(mapSeed, turnNo, 0, 0)`. **파생값이므로 표시·검증용 참고값이다** |
-| | `intents[]` | 배열 | 슬롯 오름차순 | 원소는 §5.1 `intent` 의 `angle10`/`power`/`weaponId` |
+| | `intent` | map | — | §5.1 `intent`의 5개 게임 입력 필드. 활성 슬롯 한 명의 값 |
 | `turnResult` | `turnNo` | uint32 | — | |
 | | `checksum` | uint32 | — | **격자만.** `terrain.md` §7.2 |
 | | `players[]` | 배열 | 슬롯 오름차순 | 스키마는 `decisions.md` B10 |
-| | `events[]` | 배열 | — | 목적과 스키마 미결 — §8 |
+| | `events[]` | 배열 | — | 권위 표현·진단 이벤트. `t`와 해당 정수 필드로 구성 |
+| | `phase` | str enum | aim/shop/done | 권위 매치 페이즈 |
+| | `nextActiveSlot` | uint8/null | 0~5 | 다음 턴 슬롯. 라운드 종료면 null |
 | `roundEnd` | `roundNo` | uint8 | — | |
 | | `scores[]` | 배열 | 슬롯 오름차순 | 점수 공식은 `decisions.md` B7 |
 | | `shopOpenMs` | uint32 | ms | 상점 30초(`game-design.md` §7) → `30000` |
+| `roundStart` | `roundNo`/`wind` | uint8/int16 | —/subpx/tick² | 새 라운드 권위 상태 |
+| | `spawnCells[]`/`players[]` | 배열/배열 | cell/슬롯 오름차순 | 재스폰 위치와 전체 플레이어 상태 |
 | `matchEnd` | `finalScores[]` | 배열 | 슬롯 오름차순 | |
-| `fullState` | (§4.2) | — | — | 리싱크 응답 |
+| `buyResult` | `ok` | bool | — | 구매 성공 여부 |
+| | `player` | map | — | 요청 슬롯의 전체 권위 상태와 인벤토리 |
+| `fullState` | `state` | map | — | `match.md` §1.3 전체 상태 |
+| | `checksum` | uint32 | — | 압축 전 격자 체크섬 |
+| | `gridGzip` | bin | gzip | 압축 해제 후 정확히 518,400바이트 |
+| `desync` | `turnNo` | uint32 | — | 불일치 턴 |
+| | `clientChecksum`/`serverChecksum` | uint32 | — | 텔레메트리와 복구 진입용 |
 | `ping` | `t0` | uint64 | ms | 10초 간격(§6). 클라는 `pong` 으로 그대로 반사한다 |
 | `error` | `code` | uint16 | — | 코드 표는 `decisions.md` B10 |
 | | `msg` | str | — | 사람이 읽는 설명. **클라가 이 문자열로 분기하지 않는다** |
 
 **`ping` 이 표에 없던 것은 누락이다.** §6 이 10초 간격 ping/pong 을 규정하고 §5.1 에 `pong` 이 있다.
 
-### 5.4 `checksum` 의 정의
+### 5.3 공통 와이어 스키마
+
+`players[]`는 `slot,name,x,y,hp,alive,buried,angle10,power,gold,weaponId,ammo[],items,
+score,kills,damageDone,shieldUp,connected`를 가진다. `items`는
+`shield,parachute,fuel,anemo` 정수 맵이다. 로비 `roomState.players[]`는 이 중
+`slot,name,connected,host`만 보낸다.
+
+슬롯은 서버가 로비 입장 순서대로 가장 낮은 빈 번호를 배정한다. 매치 시작 뒤 슬롯을 재사용하거나
+압축하지 않는다. 연결이 끊겨도 token으로 같은 슬롯에 복귀한다.
+
+### 5.4 코드형 로비 REST
+
+| 메서드·경로 | 요청 | 응답·역할 |
+|---|---|---|
+| `POST /api/rooms` | `name,maxPlayers` | 룸 생성. `roomCode,token,slot,protocolVersion,simVersion,wsPath` |
+| `POST /api/rooms/{code}/join` | `name` | 가장 낮은 빈 슬롯 참가와 재접속 token 발급 |
+| `GET /api/rooms/{code}` | — | 현재 `roomState` 조회. 개발·진단용 |
+| `POST /api/rooms/{code}/start` | `token` | 호스트 시작. WebSocket `start`와 같은 개발 편의 경로 |
+
+### 5.5 오류 코드
+
+| code | 이름 | 의미 |
+|---:|---|---|
+| 1000 | BAD_MESSAGE | msgpack/필드 형식 오류 |
+| 1001 | ROOM_NOT_FOUND | 룸 코드 없음 |
+| 1002 | ROOM_FULL | 정원 초과 |
+| 1003 | TOKEN_INVALID | 재접속 token 불일치 |
+| 1004 | VERSION_MISMATCH | protocol/sim 버전 불일치 |
+| 1005 | NOT_HOST | 호스트 전용 요청 |
+| 1006 | ROOM_STARTED | 시작 뒤 로비 변경 요청 |
+| 1007 | NOT_ACTIVE | 활성 슬롯이 아닌 intent |
+| 1008 | TURN_MISMATCH | turnNo가 현재 턴과 다름 |
+| 1009 | BAD_PHASE | 현재 페이즈에서 허용되지 않는 요청 |
+| 1010 | PURCHASE_REJECTED | 골드·대상·탄약 규칙으로 구매 거절 |
+| 1011 | INTERNAL | 서버 내부 오류. 상세 예외는 클라에 노출하지 않음 |
+
+### 5.6 `checksum` 의 정의
 
 **지형 격자만이다.** `terrain.md` §7.2 가 확정했으므로 여기서는 참조만 한다.
 
@@ -252,7 +312,7 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 
 `resyncReq.myChecksum` 도 같은 값이며, 같은 시점에 계산한 것이어야 한다.
 
-### 5.3 검증
+### 5.7 intent 검증
 
 서버는 `intent`를 반드시 검증한다.
 
@@ -265,7 +325,8 @@ weaponId를 실제로 보유하고 있는가, 탄약이 남았는가
 플레이어가 살아있는가
 ```
 
-검증 실패 시 **해당 intent를 버리고 직전 턴 값으로 대체한다.** 연결을 끊지 않는다.
+검증 실패 시 **필드별로 직전 턴 값을 사용한다.** 무효/소진 무기는 직전 무기, 그것도 소진이면
+표준탄으로 폴백한다. 첫 턴은 탱크 기본 각도·파워·표준탄을 쓴다. 연결을 끊지 않는다.
 근거: 버그로 잘못된 값이 나갈 수도 있는데 그때마다 판에서 튕기면 사용자 경험이 최악이다.
 단, 검증 실패율은 텔레메트리로 수집해 치팅 시도를 탐지한다.
 
@@ -276,7 +337,7 @@ weaponId를 실제로 보유하고 있는가, 탄약이 남았는가
 | 항목 | 처리 |
 |---|---|
 | 조준 중 끊김 | 직전 턴 값으로 자동 발사. 자리 유지 |
-| 60초 이상 끊김 | AI가 인계 |
+| 60초 이상 끊김 | Phase 4 기반에서는 직전 값 자동 발사를 유지. AI 인계는 Phase 6 |
 | 재접속 | `fullState` 수신 후 즉시 복귀 |
 | 하트비트 | 10초 간격 ping/pong |
 | 룸 유휴 | 전원 이탈 후 60초에 파기 |
@@ -311,7 +372,7 @@ AI 인계가 훨씬 낫다.
 
 > **턴 해결 계산은 반드시 별도 프로세스 풀에서 돌린다.**
 > `ProcessPoolExecutor` 또는 전용 워커. `sim/`이 순수 함수이므로 프로세스 경계를 넘기기 쉽다 —
-> 입력은 `(state, intents, seed)`, 출력은 `(new_state, events)`뿐이다.
+> 입력은 `(state, intent, seed)`, 출력은 `(new_state, events)`뿐이다.
 > **순수성 제약이 여기서 실질적인 이득으로 돌아온다.**
 
 ### 7.3 클라이언트 빌드 해시
@@ -322,9 +383,9 @@ AI 인계가 훨씬 낫다.
 join 시 클라가 simVersion 전송 → 서버와 불일치하면 새로고침 유도
 ```
 
-**`simVersion` 은 상수 집합의 해시다.** `server/src/talus/constants.py` 의 `SIM_VERSION` —
-해시 대상 상수 전체를 정렬 JSON 으로 직렬화한 SHA-256 의 앞 16자리다(`docs/development.md` §5).
-수동으로 올리는 버전 번호를 쓰지 않는다. 반드시 잊어버린다.
+**`simVersion` 은 상수 집합과 `RULES_VERSION`의 해시다.** `server/src/talus/constants.py` 의
+`SIM_VERSION` — 해시 대상 상수 전체를 정렬 JSON 으로 직렬화한 SHA-256 의 앞 16자리다
+(`docs/development.md` §5). 상수값이 그대로인 절차·알고리즘 변경은 `RULES_VERSION`을 올린다.
 
 **이전 판의 정의("`client/src/sim/` 전체 + `tables/trig.bin` 의 해시")는 성립할 수 없다.**
 핸드셰이크는 두 값이 **같은지**를 보는데, TypeScript 소스의 해시와 Python 소스의 해시가
@@ -349,9 +410,8 @@ join 시 클라가 simVersion 전송 → 서버와 불일치하면 새로고침 
 
 접속 전에 `GET /version` 으로 서버 값을 미리 볼 수 있다(`docs/development.md` §5).
 
-> **한계.** 상수는 그대로인데 `sim/` 코드만 다른 빌드는 `simVersion` 이 같아서 통과한다.
-> Phase 0 에서 실제로 그런 변경이 두 번 있었다(해시 확산 단계 추가, 활성 집합 정의 변경).
-> 무엇이 그걸 잡을지는 `decisions.md` B9.
+> `RULES_VERSION` 갱신을 잊는 사고는 교차 골든 CI가 잡는다. 런타임 게이트와 실증 게이트를
+> 둘 다 유지한다 (`decisions.md` B9).
 
 ---
 
@@ -359,18 +419,10 @@ join 시 클라가 simVersion 전송 → 서버와 불일치하면 새로고침 
 
 - [ ] 재생 대기 상한 8초의 적정성 (§3.1)
 - [ ] AI 인계 시점 60초의 적정성
-- [ ] 관전 모드에서 전원 조준값을 보여줄지 (관전 재미 vs 관전자를 통한 정보 유출)
-- [ ] 리플레이 저장 — `mapSeed + intents[]`만 저장하면 되므로 매우 저렴하다. 어느 단계에서 넣을지
+- [ ] 관전 모드에서 활성 플레이어의 확정 전 조준 초안을 보여줄지
+- [ ] 리플레이 저장 — `mapSeed + 시간순 intent`만 저장하면 되므로 매우 저렴하다. 어느 단계에서 넣을지
 - [ ] 랭크 매치에서 `simVersion` 불일치 시 매치 무효 처리 여부
-- [ ] **프로토콜 필드의 미결 의미** — `turnNo` 의 범위, `deadlineMs` 의 표현, 슬롯 번호의 정의·할당,
-      `players[]`/`rules`/`scores[]` 스키마, `error.code` 표, `buy` 응답과 인벤토리 전파. `decisions.md` B10
-- [ ] **바람의 결정 주체** — §3·§5.2 는 매 턴 `wind` 를 보내는데 `turnResolve` 를 "재생의 유일한 입력"이라
-      하면서 `wind` 를 넣지 않는다. `decisions.md` B3
-- [ ] **리싱크 격자의 압축 방식** (§4.2) — zstd 로 적었지만 브라우저에 표준 zstd 디코더 API 가 없다
 - [ ] **상수는 같고 `sim/` 코드만 다른 빌드를 무엇이 잡는가** (§7.3) — `decisions.md` B9
 - [ ] **한 턴 재생 길이의 상한과 §3.1 의 8초** — 비행 상한 30초(`MAX_FLIGHT_TICKS = 1800`)에
-      정착(동시 폭발 최악 4,937스텝을 `SUBSTEPS = 28` 으로 3.0초)을 더하면 최악 33초다. 8초로는 담기지 않는다
-- [ ] **재생 완료를 서버에 알리는 채널** (§3.1) — "모든 클라의 예상 재생 시간"을 서버가 알 방법이
-      §5.1 에 없다
-- [ ] **`turnResult.events[]` 의 목적** — 권위 대조용인지 렌더 입력인지. 목적이 스키마보다 먼저다
+      단발의 다중 자탄 정착 시간까지 더하면 8초 상한으로 담기지 않는 경우가 있다
 - [ ] **"직전 턴 값"이 없을 때의 폴백** (§5.3, §6) — 라운드의 첫 턴, 부활 직후, 직전 무기 탄약 소진

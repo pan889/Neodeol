@@ -137,6 +137,28 @@ def test_reseat_drops_tank_onto_terrain() -> None:
 
 
 @pytest.mark.determinism
+def test_tank_slope_changes_real_shot_angle() -> None:
+    """조준각은 차체 기준이며 경사진 지형에서는 실제 탄도각이 함께 기울어진다."""
+    from talus.sim import terrain as T
+
+    center = T.W // 2
+    T.grid.fill(T.EMPTY)
+    view = T.grid.reshape(T.H, T.W)
+    for x in range(T.W):
+        offset = max(-20, min(20, (x - center) // 5))
+        view[400 + offset :, x] = T.ROCK
+
+    tank = B.make_tank(0, center * B.CELL_SUBPX, "slope")
+    tilt10 = B.tank_tilt10(tank)
+    pose = B.shot_pose(tank, 450)
+
+    assert 80 <= tilt10 <= B.TANK_TILT_MAX10
+    assert pose.tilt10 == tilt10
+    assert pose.angle10 == 450 - tilt10
+    assert B.effective_angle10(tank, 450) == pose.angle10
+
+
+@pytest.mark.determinism
 def test_damage_is_computed_before_application() -> None:
     """`compute_damage` 는 계산만 하고 탱크를 건드리지 않는다 (§5.2).
 

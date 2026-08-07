@@ -2,8 +2,8 @@
    교차 검증 — 골든 리플레이를 Python·TS 양쪽에서 재생해 매 턴 체크섬 비교
    docs/simulation.md §9 / CLAUDE.md §결정론 게이트 (2) / roadmap Phase 3
 
-     npm run test:cross-sim              60턴까지. 약 2분
-     npm run test:cross-sim -- --slow    1000턴 포함. 약 30분
+     npm run test:cross-sim              스텝 20 + 60턴 + 발사 40. 약 5분
+     npm run test:cross-sim -- --slow    1000턴 포함. 약 25분
 
    **대조 자체는 Python 이 한다** (`server/tests/test_cross_sim.py`).
    골든은 TS 가 만들고(`client/tools/gen-golden.mts`) Python 이 같은 결과를 내는지 보는
@@ -43,27 +43,48 @@ if (pyModules.length === 0 || replays.length === 0) {
 }
 
 /* ── 1. 골든 무결성 — 사이드카가 헤더 해시와 맞는가 ───────────────────────── */
-let stepReplays = 0, turnReplays = 0, maxTurns = 0;
+let mapgenReplays = 0, matchReplays = 0, stepReplays = 0, turnReplays = 0, shotReplays = 0, maxTurns = 0, maxShots = 0;
 for (const f of replays) {
   const p = path.join(replayDir, f);
   const [head] = fs.readFileSync(p, "utf8").split("\n");
   const h = JSON.parse(head);
   if (h.v !== 1) { console.log(`${R}FAIL${X}  ${f}: 모르는 버전 ${h.v}`); process.exit(1); }
-  const blob = zlib.gunzipSync(fs.readFileSync(path.join(replayDir, h.gridFile)));
-  const sha = crypto.createHash("sha256").update(blob).digest("hex");
-  if (sha !== h.gridSha256) {
-    console.log(`${R}FAIL${X}  ${f}: 사이드카 ${h.gridFile} 가 헤더 해시와 다르다`);
-    console.log(`  ${D}한쪽만 재생성됐다. gen-golden.mts 를 다시 돌린다.${X}`);
-    process.exit(1);
+  if (h.gridFile) {
+    const blob = zlib.gunzipSync(fs.readFileSync(path.join(replayDir, h.gridFile)));
+    const sha = crypto.createHash("sha256").update(blob).digest("hex");
+    if (sha !== h.gridSha256) {
+      console.log(`${R}FAIL${X}  ${f}: 사이드카 ${h.gridFile} 가 헤더 해시와 다르다`);
+      console.log(`  ${D}한쪽만 재생성됐다. gen-golden.mts 를 다시 돌린다.${X}`);
+      process.exit(1);
+    }
   }
-  if (h.kind === "terrain-turns") { turnReplays++; maxTurns = Math.max(maxTurns, h.turnCount); }
-  else stepReplays++;
+  if (h.kind === "mapgen") mapgenReplays++;
+  else if (h.kind === "match") matchReplays++;
+  else if (h.kind === "terrain-turns") { turnReplays++; maxTurns = Math.max(maxTurns, h.turnCount); }
+  else if (h.kind === "shots") { shotReplays++; maxShots = Math.max(maxShots, h.shotCount); }
+  else if (h.kind === "terrain-only") stepReplays++;
+  else { console.log(`${R}FAIL${X}  ${f}: 모르는 kind ${h.kind}`); process.exit(1); }
 }
 if (stepReplays < 20) {
   console.log(`${R}FAIL${X}  스텝 리플레이가 ${stepReplays}개뿐이다 (20개 이상 — roadmap Phase 3)`);
   process.exit(1);
 }
-console.log(`${D}골든 무결성 OK — 스텝 ${stepReplays}개, 턴 ${turnReplays}개 (최대 ${maxTurns}턴)${X}`);
+console.log(`${D}골든 무결성 OK — 맵 ${mapgenReplays}개, 매치 ${matchReplays}개, 스텝 ${stepReplays}개, 턴 ${turnReplays}개(최대 ${maxTurns}턴), 발사 ${shotReplays}개(${maxShots}발)${X}`);
+if (mapgenReplays === 0) {
+  console.log(`${R}FAIL${X}  맵 생성 리플레이가 없다 — buildMap/chooseSpawnCells 가 검증되지 않는다`);
+  console.log(`  ${D}node --experimental-strip-types client/tools/gen-golden.mts --mapgen-only${X}`);
+  process.exit(1);
+}
+if (matchReplays === 0) {
+  console.log(`${R}FAIL${X}  매치 리플레이가 없다 — 라운드·경제·승패가 검증되지 않는다`);
+  console.log(`  ${D}node --experimental-strip-types client/tools/gen-golden.mts --match-only${X}`);
+  process.exit(1);
+}
+if (shotReplays === 0) {
+  console.log(`${R}FAIL${X}  발사 리플레이가 없다 — ballistics/weapons 가 검증되지 않는다`);
+  console.log(`  ${D}node --experimental-strip-types client/tools/gen-golden.mts${X}`);
+  process.exit(1);
+}
 if (withSlow && maxTurns < 1000) {
   console.log(`${R}FAIL${X}  --slow 인데 1000턴 리플레이가 없다`);
   console.log(`  ${D}node --experimental-strip-types client/tools/gen-golden.mts${X}`);

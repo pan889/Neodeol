@@ -8,9 +8,8 @@
    ───────────────────────────────────────────────────────────────────────────
    확정 규칙을 따른 것
 
-   · 동시 조준 + 동시 해결 (§4.1). 전원 intent 를 모은 뒤 한꺼번에 해결한다.
-     핫시트는 **입력 방식**일 뿐이고 해결은 동시다
-   · 폭발은 슬롯 오름차순 carve → 연결성 1회 → 정착 (terrain.md §8)
+   · 완전 순차 턴 (§4.1). 활성 슬롯 한 명의 intent 만 해결한다
+   · 한 발이 만든 다중 폭발은 계획 순서로 carve → 연결성 1회 → 정착 (terrain.md §8)
    · 피해는 카빙 **전** 위치 기준으로 전부 계산한 뒤 한꺼번에 적용 (simulation.md §5.2)
    · 상점은 라운드 사이에만 (§7)
 
@@ -80,7 +79,7 @@
   }
 
   /* ══ 이동 (§6.2 연료) ═════════════════════════════════════════════════
-     PHASE_RESOLVE 직전에 슬롯 오름차순으로 전원 적용한다 (decisions.md B4).
+     PHASE_RESOLVE 직전에 활성 플레이어에게 적용한다 (decisions.md B4).
      지형 경사에 제한받는다 — 높이차가 moveMaxStepUp 을 넘으면 못 올라간다. */
   function applyMove(pl, dxCells) {
     if (!pl.alive || !dxCells) return 0;
@@ -112,7 +111,7 @@
   function resolveTurn(players, wind) {
     var legs = [], dets = [], events = [];
 
-    /* 1) 이동을 먼저 적용한다 (슬롯 오름차순) */
+    /* 1) 활성 intent 의 이동을 먼저 적용한다 */
     for (var i = 0; i < players.length; i++) {
       var pl = players[i];
       if (!pl.alive || !pl.intent) continue;
@@ -122,14 +121,14 @@
       if (pl.shieldUp) { pl.items.shield--; events.push({ t: "shield", slot: pl.slot }); }
     }
 
-    /* 2) 전원 발사. 슬롯 오름차순으로 궤적을 계산한다 */
+    /* 2) intent 가 있는 활성 플레이어 한 명을 발사한다 */
     for (var j = 0; j < players.length; j++) {
       var p2 = players[j];
       if (!p2.alive || !p2.intent) continue;
       var w = effectiveWeapon(p2, p2.intent.weaponId);
       spendAmmo(p2, w.id);
-      var m = P.muzzle(p2, p2.intent.angle10);
-      var r = Wp.resolveShot(m.x, m.y, p2.intent.angle10, p2.intent.power,
+      var pose = P.shotPose(p2, p2.intent.angle10);
+      var r = Wp.resolveShot(pose.x, pose.y, pose.angle10, p2.intent.power,
                              wind, j, players, w);
       for (var k = 0; k < r.legs.length; k++) {
         r.legs[k].slot = p2.slot;
@@ -161,12 +160,14 @@
       }
     }
 
-    /* 카빙·적층은 슬롯 오름차순으로 (dets 가 이미 그 순서다) */
-    var removed = 0, filled = 0, conv = 0;
+    /* 한 발이 만든 자탄·적층을 계획 순서대로 적용한다 */
+    var removed = 0, filled = 0;
     for (var j = 0; j < dets.length; j++) {
       var a = Wp.applyDetonation(dets[j]);
-      removed += a.removed; filled += a.filled; conv += a.conv;
+      removed += a.removed; filled += a.filled;
     }
+    /* 한 발의 다중 폭발을 전부 적용한 뒤 연결성을 정확히 한 번 검사한다. */
+    var conv = T.connectivity();
     if (conv > 0) events.push({ t: "conv", cells: conv });
 
     /* 피해 합산 적용 */
@@ -384,8 +385,8 @@
 
   /* 그 조준으로 쏘면 x 몇에 떨어지는가 (subpx). 못 맞으면 null */
   function simLanding(me, angle10, power, wind, players) {
-    var m = P.muzzle(me, angle10);
-    var s = P.simulateShot(m.x, m.y, angle10, power, wind, me.slot, players, null);
+    var pose = P.shotPose(me, angle10);
+    var s = P.simulateShot(pose.x, pose.y, pose.angle10, power, wind, me.slot, players, null);
     if (s.hit === "void" || s.hit === "timeout") return null;
     return s.hitX;
   }

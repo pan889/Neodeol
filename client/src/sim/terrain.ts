@@ -399,9 +399,14 @@ export interface CarveResult {
   conv: number;
 }
 
+interface CarveOnlyResult {
+  removed: number;
+  hitRock: boolean;
+}
+
 const carveR2 = new Int32Array(6);
 
-export function carve(cx: number, cy: number, radiusCells: number): CarveResult {
+function carveOnly(cx: number, cy: number, radiusCells: number): CarveOnlyResult {
   for (let m = 1; m <= 5; m++) {
     const resist = CFG.blastResistQ8[m];
     if (resist === undefined) {
@@ -436,8 +441,19 @@ export function carve(cx: number, cy: number, radiusCells: number): CarveResult 
     }
   }
   markRows(y0 - 2, y1 + 2);
-  const conv = hitRock ? connectivity() : 0;
-  return { removed, conv };
+  return { removed, hitRock };
+}
+
+/** 단일 폭발 편의 API. 동시 폭발은 `carveDeferred()` 후 연결성을 한 번만 검사한다. */
+export function carve(cx: number, cy: number, radiusCells: number): CarveResult {
+  const r = carveOnly(cx, cy, radiusCells);
+  return { removed: r.removed, conv: r.hitRock ? connectivity() : 0 };
+}
+
+/** 동시 폭발 배치용. 모든 호출이 끝난 뒤 호출자가 `connectivity()` 를 한 번 부른다. */
+export function carveDeferred(cx: number, cy: number, radiusCells: number): CarveResult {
+  const r = carveOnly(cx, cy, radiusCells);
+  return { removed: r.removed, conv: 0 };
 }
 
 /* ══ 흙 쌓기 (§8.1) — 적층탄이 요구하는 유일한 지형 추가 연산 ═════════ */

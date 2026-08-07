@@ -34,6 +34,8 @@ services:
       TALUS_PG_DSN: postgresql://talus:talus@postgres:5432/talus
       TALUS_STATIC_DIR: /app/tools
       TALUS_REPLAY_DIR: /app/replays
+      TALUS_TRIG_TABLE: /app/tables/trig.bin
+      TALUS_SIM_WORKERS: 2
       PYTHONPATH: /app/src
     ports:
       - "${TALUS_PORT:-8000}:8000"
@@ -43,6 +45,7 @@ services:
       - ./server/pyproject.toml:/app/pyproject.toml:ro
       - ./tools:/app/tools:ro
       - ./docs:/app/docs:ro
+      - ./scripts:/app/scripts:ro
       - ./tables:/app/tables:ro
       # 골든 리플레이. `/app/tests` 는 이미 server/tests 라서 이름이 겹친다 —
       # 저장소 루트의 tests/replays 를 별도 경로로 올리고 env 로 알려준다.

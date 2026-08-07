@@ -6,25 +6,27 @@
 
 ## 1. 지금 무엇이 돌아가는가
 
-현재 단계는 **Phase 3 (서버 미러)** 이다. `docs/roadmap.md` 가 기준이다.
+**Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스까지 구현했다.**
+현재는 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화 단계다.
 
 | 것 | 어디 | 무엇 | URL |
 |---|---|---|---|
 | 모래 자동자 샌드박스 | `tools/sandbox/` | Phase 0. 자동자를 손으로 만져보는 하네스 | `/sandbox/` |
-| 손맛 프로토타입 | `tools/prototype/` | Phase 1. 탱크·탄도·바람·핫시트 | `/tools/prototype/` |
+| Canvas 전장 | `tools/prototype/` | 로컬 핫시트와 Phase 4 권위 lockstep 재생 | `/tools/prototype/`, `/tools/prototype/?multiplayer=1` |
+| 멀티 네트워크 하네스 | `tools/multiplayer/` | Phase 4. 코드형 룸·WebSocket·재접속 검증 | `/tools/multiplayer/` |
 | 탄도 검산기 | `tools/ballistics-check.mjs` | `simulation.md` §8 표를 재생성 | — |
 | 클라이언트 sim | `client/src/sim/` | Phase 2. 정수 TS 이식. **부동소수점 0개** | — |
-| 서버 sim | `server/src/talus/sim/` | Phase 3. numpy 번역. 지형·탄도 | — |
-| 골든 리플레이 | `tests/replays/` | 교차 검증의 기준선 (20 + 장기 2) | — |
-| 서버 스캐폴드 | `server/` | 정적 서빙 + 헬스체크 + 상수 노출 | `/` |
+| 서버 sim | `server/src/talus/sim/` | Phase 3. 지형·탄도·무기·맵 생성·매치의 Python 미러 | — |
+| 골든 리플레이 | `tests/replays/` | 자동자 20 + 장기 2 + 발사 + 맵 생성 + 매치 | — |
+| 룸 서버 | `server/` | 정적 서빙 + 코드형 로비 + 권위 WebSocket 룸 | `/` |
 
 프로토타입은 샌드박스의 `automaton.js` 를 **그대로 재사용한다.** 지형 자동자 사본은 하나뿐이다.
 
 **포팅 방향은 브라우저 → TS → Python 이다.** TS 가 진실의 원본이고 Python 은 번역이다.
 번역이 맞는지는 골든 리플레이가 판정한다 (§4.2).
 
-`room/`, `net/` 의 게임 로직과 `lobby/` 는 아직 비어 있다 — Phase 4 다.
-`weapons.py` · `match.py` 도 아직 없다 (`roadmap.md` Phase 3 의 남은 항목).
+Phase 4 기반은 프로세스 풀 권위 시뮬레이션, 프로세스 메모리 룸 저장소, gzip 리싱크,
+token 재접속과 실제 Canvas lockstep 재생까지 포함한다. Redis 영속화는 Phase 7 범위다.
 
 ---
 
@@ -37,6 +39,9 @@ docker compose up -d --build
 | 주소 | 무엇 |
 |---|---|
 | http://localhost:8000/sandbox/ | **Phase 0 샌드박스** |
+| http://localhost:8000/tools/prototype/ | **Phase 1 플레이어블 프로토타입** |
+| http://localhost:8000/tools/multiplayer/ | **Phase 4 멀티 네트워크 하네스** |
+| http://localhost:8000/tools/prototype/?multiplayer=1 | **저장된 룸 세션으로 들어가는 멀티 Canvas 전장** |
 | http://localhost:8000/ | 링크 모음 |
 | http://localhost:8000/healthz | liveness (의존성 안 건드림) |
 | http://localhost:8000/readyz | Redis · PostgreSQL 연결 |
@@ -50,11 +55,16 @@ docker compose up -d --build
 ./scripts/verify-stack.sh --up
 ```
 
-컨테이너 3개의 health, HTTP 엔드포인트 5개, 샌드박스 서빙, 컨테이너 내부 pytest 를 순서대로 검사한다.
+컨테이너 health, HTTP·개발 도구, 브라우저 sim 미러, 실제 2인 WebSocket 턴,
+Chrome 두 탭의 Canvas 2턴, 컨테이너 내부 pytest를 순서대로 검사한다.
+
+직접 확인할 때는 `/tools/multiplayer/`를 두 탭에서 열어 한쪽이 룸을 만들고 다른 쪽이 참가한다.
+각 탭의 **멀티 Canvas 전장 열기**를 누른 뒤 호스트가 시작하면, 활성 슬롯만 조준·발사할 수 있고
+비행·폭발·지형 정착이 끝난 뒤에만 다음 슬롯의 조작이 열린다.
 
 ### 2.1 소스를 고치면
 
-`server/src`, `server/tests`, `tools`, `docs`, `tables` 는 **읽기전용 바인드 마운트**다.
+`server/src`, `server/tests`, `tools`, `docs`, `scripts`, `tables` 는 **읽기전용 바인드 마운트**다.
 
 | 무엇을 고쳤나 | 필요한 것 |
 |---|---|
@@ -174,6 +184,13 @@ docker compose exec server python -m pytest /app/tests -q
 | `test_long_replays_divide_the_work` | 동작 | 장기 골든 한쪽만 재생성해 짝이 어긋나는 것 / 둘이 같은 성격이 되어 시간만 두 배 쓰는 것 |
 | `test_flat_range_matches_doc_table` | 동작 | 탄도가 TS·문서 표와 갈라지는 것 |
 | `test_ballistics_fits_int32` | 동작 | 중간값이 int32 를 넘어 TS 의 `>>` 절단과 갈라지는 것 |
+| `test_two_player_turn_desync_and_reconnect` | 동작 | 룸 턴 순서·리싱크·동일 슬롯 재접속 회귀 |
+
+실행 중인 Docker 포트를 직접 타는 짧은 검증은 다음 명령이다.
+
+```bash
+docker compose exec -T server python /app/scripts/smoke-multiplayer.py
+```
 
 > **skip 을 지우고 `pass` 로 바꾸지 마라.** 결정론 버그를 은폐하는 가장 흔한 경로다.
 > 위 표의 skip 은 Phase 3 에서 전부 풀렸다. 골든이 없으면 다시 skip 으로 돌아가는데,
@@ -192,7 +209,7 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 ```
 
 교차 검증의 **대조는 Python 이 한다** (`server/tests/test_cross_sim.py`). npm 스크립트는
-골든 무결성(사이드카 해시, 개수)만 보고 재생을 pytest 에 넘긴다. 도커가 떠 있으면 컨테이너에서,
+골든 무결성(사이드카 해시, 개수, mapgen/match 존재)을 보고 재생을 pytest 에 넘긴다. 도커가 떠 있으면 컨테이너에서,
 아니면 호스트 `python3` 로 돌린다.
 
 `slow` 마크는 기본 제외다 (`server/pyproject.toml` 의 `addopts`). 1000턴 리플레이는 재생만
@@ -223,16 +240,16 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 
 ## 5. `SIM_VERSION` 이 하는 일
 
-`server/src/talus/constants.py` 는 `docs/simulation.md` §8 과 `docs/terrain.md` §4 의
-**기계 판독 사본**이다. **문서가 기준이고** 어긋나면 문서를 먼저 고친다.
+`server/src/talus/constants.py` 는 `docs/simulation.md` §8, `docs/terrain.md` §4,
+`docs/mapgen.md`, `docs/match.md`의 **기계 판독 사본**이다. **문서가 기준이고** 어긋나면 문서를 먼저 고친다.
 
 `SIM_VERSION` 은 이 상수 집합 전체의 SHA-256 앞 16자리다. 상수가 하나라도 바뀌면 값이 바뀐다.
+상수 밖의 sim 절차가 바뀌면 `RULES_VERSION`을 올리고, 누락은 교차 골든이 잡는다.
 
 ```
 $ curl -s localhost:8000/version
-{"app_version":"0.0.0","protocol_version":1,"sim_version":"<16 hex>",
- "provisional":["BLAST_RESIST_Q8","GRAVITY","MAX_SETTLE_STEPS","POWER_SCALE",
-                "SLIDE_CHANCE_SAND_Q8","SLIDE_CHANCE_SOIL_Q8","WIND_MAX"],
+{"app_version":"0.0.0","protocol_version":2,"sim_version":"<16 hex>",
+ "provisional":["... constants.PROVISIONAL의 현재 값 ..."],
  "grid":{"w":960,"h":540,"cell_px":2}}
 ```
 
@@ -273,14 +290,19 @@ server/
     constants.py              상수 사본 + SIM_VERSION
     net/app.py                FastAPI
     store/health.py           의존성 확인
-    sim/  room/  lobby/       비어 있음 (Phase 3~4)
+    sim/                       Phase 3 완료: terrain/ballistics/weapons/mapgen/match
+    room/                       Phase 4 룸 수명주기·권위 턴·프로세스 풀
+    net/multiplayer.py          코드형 로비 REST·WebSocket
+    net/protocol.py             msgpack 와이어 검증
   tests/
     test_determinism.py       결정론 게이트
     test_health.py            앱 기동
 ```
 
-`client/` 는 아직 없다. Phase 2 에서 `tools/sandbox/automaton.js` 를 `client/src/sim/terrain.ts` 로
-정수화·이식하면서 생긴다.
+client/
+  src/sim/                     Phase 2~3 TypeScript 기준 구현
+  tests/                       결정론·교차 검증 진입점
+  tools/                       float 검사·골든 생성기
 
 ---
 

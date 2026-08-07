@@ -352,7 +352,7 @@
 
   /* ══ 폭발 카빙 (§8) ══════════════════════════════════════════════════ */
   var carveR2 = new Int32Array(6);
-  function carve(cx, cy, radius) {
+  function carveOnly(cx, cy, radius) {
     for (var mm = 1; mm <= 5; mm++) {
       var rm = (radius * CFG.blastResist[mm]) >> 8;
       carveR2[mm] = rm * rm;
@@ -373,8 +373,19 @@
       }
     }
     markRows(y0 - 2, y1 + 2);
-    var conv = hitRock ? connectivity() : 0;
-    return { removed: removed, conv: conv };
+    return { removed: removed, hitRock: hitRock };
+  }
+
+  /* 단일 폭발 편의 API. 동시 폭발은 `carveDeferred()` 를 전부 적용한 뒤
+     `connectivity()` 를 정확히 한 번 부른다 (terrain.md §6.1·§8). */
+  function carve(cx, cy, radius) {
+    var r = carveOnly(cx, cy, radius);
+    return { removed: r.removed, conv: r.hitRock ? connectivity() : 0 };
+  }
+
+  function carveDeferred(cx, cy, radius) {
+    var r = carveOnly(cx, cy, radius);
+    return { removed: r.removed, conv: 0 };
   }
 
   /* ══ 흙 쌓기 — deposit (§8 의 역연산) ═════════════════════════════════
@@ -491,6 +502,7 @@
 
     step: step,
     carve: carve,
+    carveDeferred: carveDeferred,
     deposit: deposit,
     connectivity: connectivity,
     countMobile: countMobile,

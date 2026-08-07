@@ -23,6 +23,7 @@ import * as Terrain from "../src/sim/terrain.ts";
 import { loadTrig, TRIG_BYTES } from "../src/sim/trig.ts";
 import { hex8, isqrt, floorDiv, hash32 } from "../src/sim/intmath.ts";
 import * as B from "../src/sim/ballistics.ts";
+import * as Match from "../src/sim/match.ts";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(HERE, "..", "..");
@@ -285,6 +286,111 @@ head("7. 탄도 — simulation.md §8.1 표와 일치하는가");
   const ratio = (half * 1000) / full;
   check(ratio > 235 && ratio < 265, "파워 절반 → 사거리 1/4 (항력 0 이므로 제곱 관계)",
         `${(ratio / 10).toFixed(1)}%`);
+}
+
+/* ── 8. 경사 차체가 실제 탄도각을 바꾼다 ─────────────────────────────── */
+head("8. 경사 발사 — 차체 상대각이 실제 월드 궤적에 반영되는가");
+{
+  const center = W >> 1;
+  const buildSlope = (direction: number): B.Tank => {
+    Terrain.grid.fill(EMPTY);
+    for (let x = 0; x < W; x++) {
+      let offset = floorDiv(x - center, 5);
+      if (offset < -20) offset = -20;
+      else if (offset > 20) offset = 20;
+      const top = 400 + direction * offset;
+      for (let y = top; y < H; y++) Terrain.grid[y * W + x] = ROCK;
+    }
+    return B.makeTank(0, center * B.CELL_SUBPX, direction > 0 ? "downhill" : "uphill");
+  };
+
+  const downhill = buildSlope(1);
+  const downhillPose = B.shotPose(downhill, 450);
+  const downhillShot = B.simulateShot(
+    downhillPose.x, downhillPose.y, downhillPose.angle10, 700, 0, 0, [downhill], false,
+  );
+  const downhillFirstX = downhillShot.xs[0];
+  const downhillFirstY = downhillShot.ys[0];
+  const uprightShot = B.simulateShot(
+    downhillPose.x, downhillPose.y, 450, 700, 0, 0, [downhill], false,
+  );
+  check(
+    downhillPose.tilt10 > 0 && downhillPose.angle10 === 450 - downhillPose.tilt10,
+    "오른쪽 내리막은 실제 발사각을 낮춘다",
+    `차체 ${(downhillPose.tilt10 / 10).toFixed(1)}° · 월드 ${(downhillPose.angle10 / 10).toFixed(1)}°`,
+  );
+  check(
+    downhillShot.n > 0 && uprightShot.n > 0
+      && (downhillFirstX !== uprightShot.xs[0] || downhillFirstY !== uprightShot.ys[0]),
+    "경사 보정 전후의 첫 궤적 좌표가 다르다",
+  );
+
+  const uphill = buildSlope(-1);
+  const uphillPose = B.shotPose(uphill, 450);
+  check(
+    uphillPose.tilt10 < 0 && uphillPose.angle10 === 450 - uphillPose.tilt10,
+    "오른쪽 오르막은 실제 발사각을 높인다",
+    `차체 ${(uphillPose.tilt10 / 10).toFixed(1)}° · 월드 ${(uphillPose.angle10 / 10).toFixed(1)}°`,
+  );
+}
+
+head("9. 턴 경계 불변식 — sim 상태는 격자 하나뿐이다 (terrain.md §5.2)");
+{
+  /* 활성 행 마스크는 격자 스냅샷에 안 들어간다. 서버는 매 턴 격자를 바이트에서
+     복원하며 마스크를 비우고(room/simulation.py `_restore_grid`), 클라이언트는
+     메모리에 그대로 이어간다. 턴 경계에서 마스크가 비어 있지 않으면 **두 쪽이
+     다음 턴부터 다른 지형을 시뮬레이션한다.**
+
+     실제로 그랬다: 강제 종료(`forced`) 경로가 마스크를 안 비웠고, 교차 검증 골든은
+     `forced` 를 한 번도 안 밟아서 잡지 못했다. */
+  const T = Terrain;
+
+  function unstable(seed: number): void {
+    T.CFG.seed = seed;
+    T.grid.fill(T.EMPTY);
+    for (let y = 200; y < 460; y++) {
+      for (let x = 200; x < 760; x++) {
+        const h = hash32(seed, x, y, 0);
+        T.grid[y * T.W + x] = (h >>> 9) % 3 !== 0 ? ((h % 4) + 1) : T.EMPTY;
+      }
+    }
+    for (let y = 522; y < T.H; y++) for (let x = 0; x < T.W; x++) T.grid[y * T.W + x] = T.BEDROCK;
+    T.connectivity();
+    T.markAll();
+    T.setStep(0);
+  }
+
+  unstable(0x91);
+  const forced = Match.settleTerrain(40, 8);
+  check(forced.forced, "상한 40 스텝이면 강제 종료된다", `${forced.steps} 스텝`);
+  check(
+    T.activeRowCount() === 0,
+    "강제 종료도 활성 행 마스크를 비운다",
+    `활성 ${T.activeRowCount()} 행`,
+  );
+
+  unstable(0x92);
+  const natural = Match.settleTerrain();
+  check(!natural.forced && T.activeRowCount() === 0,
+    "정상 종료도 활성 행이 0 이다", `${natural.steps} 스텝`);
+
+  /* 강제 종료 뒤 격자 바이트만으로 다음 스텝이 재현되는가 —
+     서버가 하는 복원(clearActive)과 클라이언트의 메모리 유지가 같은 결과를 내야 한다 */
+  unstable(0x93);
+  Match.settleTerrain(40, 8);
+  const snapshot = T.grid.slice();
+  const keepStep = () => { for (let i = 0; i < 200; i++) T.step(); return hex8(T.checksum()); };
+
+  const memoryPath = keepStep();
+  T.grid.set(snapshot);
+  T.clearActive();
+  T.setStep(0);
+  const restorePath = keepStep();
+  check(
+    memoryPath === restorePath,
+    "강제 종료 다음 진행이 메모리 유지 · 바이트 복원에서 같다",
+    `${memoryPath} vs ${restorePath}`,
+  );
 }
 
 console.log();

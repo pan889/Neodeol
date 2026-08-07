@@ -432,14 +432,13 @@ def _col_ge(v: int) -> npt.NDArray[np.bool_]:
 
 
 # ══ 폭발 카빙 (§8) ═══════════════════════════════════════════════════════
-def carve(cx: int, cy: int, radius_cells: int) -> tuple[int, int]:
-    """반환 ``(removed, conv)``."""
+def _carve_only(cx: int, cy: int, radius_cells: int) -> tuple[int, bool]:
     y0 = max(0, cy - radius_cells)
     y1 = min(H - 1, cy + radius_cells)
     x0 = max(0, cx - radius_cells)
     x1 = min(W - 1, cx + radius_cells)
     if y0 > y1 or x0 > x1:
-        return 0, 0
+        return 0, False
 
     g2 = _grid2d()
     sub = g2[y0 : y1 + 1, x0 : x1 + 1]
@@ -457,8 +456,23 @@ def carve(cx: int, cy: int, radius_cells: int) -> tuple[int, int]:
     hit_rock = bool(((sub == ROCK) & remove).any())
     sub[remove] = EMPTY
     mark_rows(y0 - 2, y1 + 2)
-    conv = connectivity() if hit_rock else 0
-    return removed, conv
+    return removed, hit_rock
+
+
+def carve(cx: int, cy: int, radius_cells: int) -> tuple[int, int]:
+    """단일 폭발 편의 API. 반환 ``(removed, conv)``.
+
+    동시 폭발은 :func:`carve_deferred` 를 전부 적용한 뒤 ``connectivity()`` 를
+    정확히 한 번 부른다 (`docs/terrain.md` §6.1·§8).
+    """
+    removed, hit_rock = _carve_only(cx, cy, radius_cells)
+    return removed, connectivity() if hit_rock else 0
+
+
+def carve_deferred(cx: int, cy: int, radius_cells: int) -> tuple[int, int]:
+    """동시 폭발 배치용 카빙. 연결성 검사는 호출자가 배치 끝에 한 번 수행한다."""
+    removed, _hit_rock = _carve_only(cx, cy, radius_cells)
+    return removed, 0
 
 
 # ══ 흙 쌓기 (§8.1) ═══════════════════════════════════════════════════════

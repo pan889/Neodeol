@@ -5,6 +5,9 @@
 각도와 파워로 포탄을 쏘고, 폭발이 지형을 파괴하고, 파괴된 흙이 **모래처럼 무너져 내려** 다음 턴의 지형이 바뀐다.
 1991년 Scorched Earth 계열(포트리스, 웜즈, 건바운드)의 규칙 구조를 그대로 가져오되, 표현은 전면 재설계한다.
 
+**현재 단계:** Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스를 완료했다.
+다음은 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화다. `docs/roadmap.md`가 기준이다.
+
 > **코드네임.** `Talus`는 절벽 아래 무너져 쌓인 암설 더미를 뜻하는 지질학 용어다.
 > 이 게임의 핵심 상수인 안식각(angle of repose)이 talus 개념에서 나온다.
 >
@@ -23,6 +26,8 @@
 | `docs/decisions.md` | **결정 대기 목록.** 선택지와 추천안까지 | 무언가를 확정하기 전에 항상 |
 | `docs/game-design.md` | 게임 규칙, 확정된 기획 결정과 그 근거 | 게임 로직 건드릴 때 |
 | `docs/terrain.md` | **모래 붕괴 자동자 명세.** 이 프로젝트의 심장 | `sim/terrain` 작업 전 필수 |
+| `docs/mapgen.md` | `mapSeed` → 초기 격자·스폰의 결정론적 명세 | 맵 생성·매치 초기화 |
+| `docs/match.md` | 라운드·턴·경제·승패의 Phase 3 결정론적 기준선 | `sim/match` 작업 전 필수 |
 | `docs/simulation.md` | 좌표계, 상수표, 탄도, 폭발, 결정론 | `sim/` 작업 전 필수 |
 | `docs/netcode.md` | 결정론적 lockstep, 룸 수명주기, 리싱크, 프로토콜 | `room/`, `net/` |
 | `docs/rendering.md` | 아트 디렉션과 WebGL 파이프라인 | 클라이언트 렌더러 |
@@ -73,8 +78,9 @@ server/src/talus/
     trig.py       tables/trig.bin 조회. **파일은 호출자가 읽어 넣는다** (절대 규칙 1)
     terrain.py    MaterialGrid, 모래 자동자, 폭발 카빙
     ballistics.py 탄도 적분, 충돌 판정
-    weapons.py    무기 정의 테이블과 발동 로직        (Phase 3 남음)
-    match.py      라운드/턴 진행, 경제, 승패 판정      (Phase 3 남음)
+    weapons.py    무기 정의 테이블과 발동 로직
+    mapgen.py     mapSeed 기반 초기 격자·스폰
+    match.py      라운드/턴 진행, 경제, 승패 판정
   room/         턴 루프, 입력 수집, 이벤트 브로드캐스트
   net/          FastAPI, WebSocket, msgpack 인코딩
   lobby/        매치메이킹, 룸 배정, JWT 발급 (stateless)
@@ -155,12 +161,16 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 전체(`terrain.md` §6.1). 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을 잡은 전례가 있으므로
 둘 중 하나만 남기지 마라.
 
-초기 지형 생성기 명세(`docs/decisions.md` B1)가 미결이라 리플레이는 초기 격자를
-`*.grid.gz` 사이드카로 싣는다. B1 이 확정되면 사이드카를 지우고 `mapSeed` 만 남긴다.
+`kind=mapgen` 과 `kind=match` 리플레이는 초기 격자 사이드카 없이 `mapSeed`만으로 재생한다.
+기존 자동자 스트레스·발사 리플레이는 생성기와 독립된 회귀 장면을 보존하기 위해
+`*.grid.gz` 사이드카를 계속 쓴다.
 
 교차 검증은 골든 리플레이 파일(`tests/replays/*.jsonl`)을 재생한다.
 의도적으로 밸런스를 바꿔 리플레이가 깨졌다면, **깨진 이유를 커밋 메시지에 적고** 골든 파일을 재생성한다.
 이유 없이 재생성하는 것은 금지다. 그게 결정론 버그를 은폐하는 가장 흔한 경로다.
+
+상수값이 그대로인 `sim/` 절차·알고리즘 변경은 `server/src/talus/constants.py`의
+`RULES_VERSION`도 올린다. 교차 골든은 이 수동 갱신을 잊었을 때의 두 번째 안전망이다.
 
 ---
 
