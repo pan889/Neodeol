@@ -4,7 +4,7 @@ import * as T from "./terrain.js";
 import * as B from "./ballistics.js";
 import * as Wp from "./weapons.js";
 import * as M from "./mapgen.js";
-export const MATCH_VERSION = 6;
+export const MATCH_VERSION = 7;
 export const AMMO_INFINITE = 0x7fffffff;
 export const RULES = {
     rounds: 5,
@@ -409,9 +409,10 @@ export function closeRound(players, outcome) {
     }
     return events;
 }
-export function beginRound(players, spawnCells) {
+export function beginRound(players, spawnCells, rotation) {
     assertPlayers(players);
     if (spawnCells.length !== players.length) throw new RangeError("spawnCells length mismatch");
+    const shift = (rotation % players.length + players.length) % players.length;
     for(let i = 0; i < players.length; i++){
         const player = players[i];
         player.hp = B.MAX_HP;
@@ -419,7 +420,7 @@ export function beginRound(players, spawnCells) {
         player.buried = false;
         player.shieldUp = false;
         player.intent = null;
-        player.x = spawnCells[i] * B.CELL_SUBPX;
+        player.x = spawnCells[(i + shift) % players.length] * B.CELL_SUBPX;
         player.y = B.surfaceSubY(player.x);
         B.reseatTank(player);
     }
@@ -479,7 +480,7 @@ export function createMatch(mapSeed, specs) {
     if (initialSettle.forced) throw new Error("initial map settlement exceeded limit");
     const spawnCells = M.chooseSpawnCells(T.grid, specs.length);
     const players = specs.map((spec, slot)=>makePlayer(slot, spec.name, spec.isAI === true, spawnCells[slot] * B.CELL_SUBPX));
-    beginRound(players, spawnCells);
+    beginRound(players, spawnCells, 0);
     return {
         state: {
             mapSeed,
@@ -563,7 +564,7 @@ export function startNextRound(state) {
     state.roundTurn = 0;
     state.activeSlot = (state.roundNo - 1) % state.players.length;
     state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length);
-    beginRound(state.players, state.spawnCells);
+    beginRound(state.players, state.spawnCells, state.roundNo - 1);
     state.wind = deriveWind(state.mapSeed, state.turnNo + 1, state.wind);
     state.phase = "aim";
 }

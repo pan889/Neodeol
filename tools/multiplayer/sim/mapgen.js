@@ -1,7 +1,7 @@
 // Generated from client/src/sim/mapgen.ts. Do not edit.
 import { clampInt, floorDiv, hash32, iabs } from "./intmath.js";
 import { BEDROCK, EMPTY, H, N, ROCK, SAND, SCREE, SOIL, W } from "./terrain.js";
-export const MAPGEN_VERSION = 1;
+export const MAPGEN_VERSION = 2;
 export const NOISE_SHIFT = 7;
 export const SURFACE_BASE = 170;
 export const SURFACE_AMP = 60;
@@ -32,21 +32,115 @@ function generatedSurface(mapSeed, x) {
     const noise = a + ((b - a) * fraction >> NOISE_SHIFT);
     return clampInt(SURFACE_BASE + ((noise - 32768) * SURFACE_AMP >> 16), 96, 260);
 }
-function buildLayers(target, surface) {
+export const PROVINCES = [
+    {
+        bands: [
+            34,
+            14,
+            6,
+            10,
+            30
+        ],
+        bedrockDepth: 0
+    },
+    {
+        bands: [
+            0,
+            48,
+            4,
+            8,
+            40
+        ],
+        bedrockDepth: 0
+    },
+    {
+        bands: [
+            0,
+            0,
+            0,
+            34,
+            30
+        ],
+        bedrockDepth: 0
+    },
+    {
+        bands: [
+            6,
+            12,
+            0,
+            6,
+            16
+        ],
+        bedrockDepth: 132
+    }
+];
+const PROVINCE_SALT = 0x9e07;
+function provinceOrder(mapSeed) {
+    const order = [
+        0,
+        1,
+        2,
+        3
+    ];
+    for(let i = order.length - 1; i > 0; i--){
+        const j = hash32(mapSeed, i, PROVINCE_SALT, 1) % (i + 1);
+        const t = order[i];
+        order[i] = order[j];
+        order[j] = t;
+    }
+    return order;
+}
+const PROVINCE_BLEND = 48;
+function provinceAt(mapSeed, x) {
+    const count = 4 + (hash32(mapSeed, 0, PROVINCE_SALT, 0) & 1);
+    const width = floorDiv(W, count);
+    let index = floorDiv(x, width);
+    if (index >= count) index = count - 1;
+    const localX = x - index * width;
+    const pick = (i)=>provinceOrder(mapSeed)[i % PROVINCES.length];
+    const here = pick(index);
+    if (localX >= PROVINCE_BLEND || index === 0) return {
+        a: here,
+        b: here,
+        t: 0
+    };
+    return {
+        a: pick(index - 1),
+        b: here,
+        t: localX
+    };
+}
+function blendBand(a, b, t) {
+    return a + floorDiv((b - a) * t, PROVINCE_BLEND);
+}
+function buildLayers(target, surface, mapSeed) {
     for(let x = 0; x < W; x++){
+        const p = provinceAt(mapSeed, x);
+        const pa = PROVINCES[p.a];
+        const pb = PROVINCES[p.b];
+        const bands = [];
+        for(let i = 0; i < 5; i++)bands.push(blendBand(pa.bands[i], pb.bands[i], p.t));
+        const bedrockDepth = blendBand(pa.bedrockDepth, pb.bedrockDepth, p.t);
         let y = surface[x];
-        fillVertical(target, x, y, y + 17, SAND);
-        y += 18;
-        fillVertical(target, x, y, y + 27, SOIL);
-        y += 28;
-        fillVertical(target, x, y, y + 9, SAND);
-        y += 10;
-        fillVertical(target, x, y, y + 11, SCREE);
-        y += 12;
-        fillVertical(target, x, y, y + 39, SOIL);
-        y += 40;
-        fillVertical(target, x, y, BEDROCK_Y - 1, ROCK);
-        fillVertical(target, x, BEDROCK_Y, H - 1, BEDROCK);
+        const order = [
+            SAND,
+            SOIL,
+            SAND,
+            SCREE,
+            SOIL
+        ];
+        for(let i = 0; i < 5; i++){
+            if (bands[i] <= 0) continue;
+            fillVertical(target, x, y, y + bands[i] - 1, order[i]);
+            y += bands[i];
+        }
+        let bedrockTop = BEDROCK_Y;
+        if (bedrockDepth > 0) {
+            const shelf = surface[x] + bedrockDepth;
+            if (shelf < bedrockTop) bedrockTop = shelf;
+        }
+        if (y < bedrockTop) fillVertical(target, x, y, bedrockTop - 1, ROCK);
+        fillVertical(target, x, bedrockTop, H - 1, BEDROCK);
     }
 }
 function addAnchors(target, surface, mapSeed) {
@@ -98,7 +192,7 @@ export function buildMap(mapSeed) {
     const target = new Uint8Array(N);
     const surface = new Int16Array(W);
     for(let x = 0; x < W; x++)surface[x] = generatedSurface(mapSeed, x);
-    buildLayers(target, surface);
+    buildLayers(target, surface, mapSeed);
     addAnchors(target, surface, mapSeed);
     addArch(target, surface, mapSeed);
     sealEdges(target);

@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 6;
+export const MATCH_VERSION = 7;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {
@@ -530,9 +530,21 @@ export function closeRound(players: Player[], outcome: RoundOutcome): MatchEvent
   return events;
 }
 
-export function beginRound(players: Player[], spawnCells: number[]): void {
+/**
+ * 라운드 시작 배치. `rotation` 만큼 **슬롯과 스폰 자리를 어긋나게** 돌린다.
+ *
+ * 스폰 자리는 x 오름차순이라 회전이 없으면 슬롯 0 은 매 라운드 왼쪽 끝을 받는다.
+ * 지질 구역이 생기기 전에는 그래도 됐지만(960열이 같은 지층이었다), 이제는 자리마다
+ * 발밑이 다르다 — 실측으로 `BEDROCK 52/60`(사실상 파괴 불가)부터 `SAND 40/60`(통째로
+ * 쓸려나감)까지 갈린다. 회전이 없으면 **슬롯 번호가 5라운드 내내 고정 유불리**가 된다.
+ *
+ * 지질을 평탄화해서 공정하게 만드는 방법도 있지만 그러면 이 변경의 목적이 사라진다.
+ * 자리를 돌리는 쪽이 차이를 남기면서 매치 단위로 균등하게 만든다.
+ */
+export function beginRound(players: Player[], spawnCells: number[], rotation: number): void {
   assertPlayers(players);
   if (spawnCells.length !== players.length) throw new RangeError("spawnCells length mismatch");
+  const shift = ((rotation % players.length) + players.length) % players.length;
   for (let i = 0; i < players.length; i++) {
     const player = players[i];
     player.hp = B.MAX_HP;
@@ -540,7 +552,7 @@ export function beginRound(players: Player[], spawnCells: number[]): void {
     player.buried = false;
     player.shieldUp = false;
     player.intent = null;
-    player.x = spawnCells[i] * B.CELL_SUBPX;
+    player.x = spawnCells[(i + shift) % players.length] * B.CELL_SUBPX;
     player.y = B.surfaceSubY(player.x);
     B.reseatTank(player);
   }
@@ -612,7 +624,7 @@ export function createMatch(mapSeed: number, specs: PlayerSpec[]): CreateMatchRe
     spec.isAI === true,
     spawnCells[slot] * B.CELL_SUBPX,
   ));
-  beginRound(players, spawnCells);
+  beginRound(players, spawnCells, 0);
   return {
     state: {
       mapSeed,
@@ -693,7 +705,7 @@ export function startNextRound(state: MatchState): void {
   state.roundTurn = 0;
   state.activeSlot = (state.roundNo - 1) % state.players.length;
   state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length);
-  beginRound(state.players, state.spawnCells);
+  beginRound(state.players, state.spawnCells, state.roundNo - 1);
   state.wind = deriveWind(state.mapSeed, state.turnNo + 1, state.wind);
   state.phase = "aim";
 }

@@ -590,17 +590,26 @@ def close_round(players: list[Player], outcome: RoundOutcome) -> list[MatchEvent
     return events
 
 
-def begin_round(players: list[Player], spawn_cells: list[int]) -> None:
+def begin_round(players: list[Player], spawn_cells: list[int], rotation: int) -> None:
+    """라운드 시작 배치. `rotation` 만큼 슬롯과 스폰 자리를 어긋나게 돌린다.
+
+    스폰 자리는 x 오름차순이라 회전이 없으면 슬롯 0 이 매 라운드 왼쪽 끝을 받는다.
+    지질 구역이 생긴 뒤로는 자리마다 발밑이 다르다 — 실측으로 `BEDROCK 52/60`
+    (사실상 파괴 불가)부터 `SAND 40/60`(통째로 쓸려나감)까지 갈린다.
+    회전이 없으면 **슬롯 번호가 5라운드 내내 고정 유불리**가 된다
+    (실측 최대 격차 4580‰ → 회전 시 916‰).
+    """
     _assert_players(players)
     if len(spawn_cells) != len(players):
         raise ValueError("spawn_cells length mismatch")
+    shift = rotation % len(players)
     for index, player in enumerate(players):
         player.hp = B.MAX_HP
         player.alive = True
         player.buried = False
         player.shield_up = False
         player.intent = None
-        player.x = spawn_cells[index] * B.CELL_SUBPX
+        player.x = spawn_cells[(index + shift) % len(players)] * B.CELL_SUBPX
         player.y = B.surface_sub_y(player.x)
         B.reseat_tank(player)
 
@@ -684,7 +693,7 @@ def create_match(map_seed: int, specs: list[PlayerSpec]) -> CreateMatchResult:
         )
         for index, spec in enumerate(specs)
     ]
-    begin_round(players, spawn_cells)
+    begin_round(players, spawn_cells, 0)
     state = MatchState(
         map_seed=map_seed,
         round_no=1,
@@ -768,6 +777,6 @@ def start_next_round(state: MatchState) -> None:
     state.round_turn = 0
     state.active_slot = (state.round_no - 1) % len(state.players)
     state.spawn_cells = M.choose_spawn_cells(T.grid, len(state.players))
-    begin_round(state.players, state.spawn_cells)
+    begin_round(state.players, state.spawn_cells, state.round_no - 1)
     state.wind = derive_wind(state.map_seed, state.turn_no + 1, state.wind)
     state.phase = "aim"

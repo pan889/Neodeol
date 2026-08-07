@@ -7,7 +7,7 @@ import numpy.typing as npt
 
 from talus import constants
 
-from .intmath import clamp_int, hash32_scalar, iabs
+from .intmath import clamp_int, floor_div, hash32_scalar, iabs
 from .terrain import BEDROCK, EMPTY, H, N, ROCK, SAND, SCREE, SOIL, W
 
 MAPGEN_VERSION = constants.MAPGEN_VERSION
@@ -45,21 +45,93 @@ def _generated_surface(map_seed: int, x: int) -> int:
     return clamp_int(SURFACE_BASE + (((noise - 32768) * SURFACE_AMP) >> 16), 96, 260)
 
 
-def _build_layers(target: npt.NDArray[np.uint8], surface: list[int]) -> None:
+# ══ 지질 구역 (mapgen.md §3.1) ═══════════════════════════════════════════
+# `client/src/sim/mapgen.ts` 의 1:1 번역. 맵을 좌우로 나눠 구역마다 다른 지층을 깐다.
+#
+# 그 전에는 960열 전부가 같은 지층이라 안식각 26.6°/40.3°/44.2° 가 전술적으로 아무
+# 일도 하지 않았다 — 어디를 파도 같은 것이 나오니 서 있는 자리가 의미가 없었다.
+# **표면 형상은 안 바꾼다.** 지표 아래 두께만 바뀌므로 새로 노출되는 경사가 없고,
+# 초기 정착 비용이 늘지 않는다 (실측: 최악 9스텝 / 상한 12000).
+
+#: 구역 프로파일. `(bands, bedrock_depth)`.
+#: bands 는 위에서부터 [SAND, SOIL, SAND, SCREE, SOIL] 두께이고 남는 깊이는 ROCK 이 채운다.
+#: bedrock_depth 가 0 이면 `BEDROCK_Y` 를 그대로 쓴다.
+#:
+#: **표면 재질이 구역마다 다르다.** 앞 밴드를 0 으로 두어 아래 재질을 노출시킨다 —
+#: 전부 SAND 로 시작하면 화면상 구분이 안 되고, 보이지 않으면 전술이 되지 않는다.
+PROVINCES: tuple[tuple[tuple[int, int, int, int, int], int], ...] = (
+    ((34, 14, 6, 10, 30), 0),    # 0 모래 분지 — 파면 26.6° 로 넓게 흘러내린다
+    ((0, 48, 4, 8, 40), 0),      # 1 점토 대지 — 40.3° 급한 벽이 선다
+    ((0, 0, 0, 34, 30), 0),      # 2 자갈 사면 — 44.2° 각진 더미
+    ((6, 12, 0, 6, 16), 132),    # 3 암반 선반 — 기반암이 얕다
+)
+
+PROVINCE_SALT = 0x9E07
+#: 구역 경계가 지층을 수직으로 자르지 않게 섞는 폭 (셀)
+PROVINCE_BLEND = 48
+
+
+def _province_order(map_seed: int) -> list[int]:
+    """구역 배치 순열. **한 맵 안에 네 지질이 전부 나오는 것을 보장한다.**
+
+    구역마다 독립 추첨하면 시드에 따라 맵 전체가 한 지질로 덮인다
+    (실측: 모래 809열 / 960). 다양성이 이 변경의 전부라 우연에 맡기지 않는다.
+    정수 전용 Fisher-Yates 이고 `hash32` 만 쓴다.
+    """
+    order = [0, 1, 2, 3]
+    for i in range(len(order) - 1, 0, -1):
+        j = hash32_scalar(map_seed, i, PROVINCE_SALT, 1) % (i + 1)
+        order[i], order[j] = order[j], order[i]
+    return order
+
+
+def _province_at(map_seed: int, x: int) -> tuple[int, int, int]:
+    """열 `x` 의 구역과 경계 혼합 가중치. 반환 `(a, b, t)`."""
+    count = 4 + (hash32_scalar(map_seed, 0, PROVINCE_SALT, 0) & 1)
+    width = W // count
+    index = x // width
+    if index >= count:
+        index = count - 1
+    local_x = x - index * width
+    order = _province_order(map_seed)
+
+    here = order[index % len(PROVINCES)]
+    if local_x >= PROVINCE_BLEND or index == 0:
+        return here, here, 0
+    return order[(index - 1) % len(PROVINCES)], here, local_x
+
+
+def _blend_band(a: int, b: int, t: int) -> int:
+    """두 프로파일을 정수 가중 평균한다. `floor_div` 로 나눈다 (음수 대비)."""
+    return a + floor_div((b - a) * t, PROVINCE_BLEND)
+
+
+def _build_layers(
+    target: npt.NDArray[np.uint8], surface: list[int], map_seed: int
+) -> None:
+    order = (SAND, SOIL, SAND, SCREE, SOIL)
     for x in range(W):
+        pa_i, pb_i, t = _province_at(map_seed, x)
+        pa_bands, pa_depth = PROVINCES[pa_i]
+        pb_bands, pb_depth = PROVINCES[pb_i]
+        bands = [_blend_band(pa_bands[i], pb_bands[i], t) for i in range(5)]
+        bedrock_depth = _blend_band(pa_depth, pb_depth, t)
+
         y = surface[x]
-        _fill_vertical(target, x, y, y + 17, SAND)
-        y += 18
-        _fill_vertical(target, x, y, y + 27, SOIL)
-        y += 28
-        _fill_vertical(target, x, y, y + 9, SAND)
-        y += 10
-        _fill_vertical(target, x, y, y + 11, SCREE)
-        y += 12
-        _fill_vertical(target, x, y, y + 39, SOIL)
-        y += 40
-        _fill_vertical(target, x, y, BEDROCK_Y - 1, ROCK)
-        _fill_vertical(target, x, BEDROCK_Y, H - 1, BEDROCK)
+        for i in range(5):
+            if bands[i] <= 0:
+                continue
+            _fill_vertical(target, x, y, y + bands[i] - 1, order[i])
+            y += bands[i]
+
+        bedrock_top = BEDROCK_Y
+        if bedrock_depth > 0:
+            shelf = surface[x] + bedrock_depth
+            if shelf < bedrock_top:
+                bedrock_top = shelf
+        if y < bedrock_top:
+            _fill_vertical(target, x, y, bedrock_top - 1, ROCK)
+        _fill_vertical(target, x, bedrock_top, H - 1, BEDROCK)
 
 
 def _add_anchors(
@@ -123,7 +195,7 @@ def _seal_edges(target: npt.NDArray[np.uint8]) -> None:
 def build_map(map_seed: int) -> npt.NDArray[np.uint8]:
     target = np.zeros((H, W), dtype=np.uint8)
     surface = [_generated_surface(map_seed, x) for x in range(W)]
-    _build_layers(target, surface)
+    _build_layers(target, surface, map_seed)
     _add_anchors(target, surface, map_seed)
     _add_arch(target, surface, map_seed)
     _seal_edges(target.reshape(N))

@@ -81,11 +81,11 @@ CONNECTIVITY_MAX_ROUNDS: Final = 8
 
 # ── 초기 맵 생성 (mapgen.md) ───────────────────────────────────────────
 # 맵 생성 알고리즘을 바꾸면 반드시 올린다. 골든 리플레이와 함께 검증한다.
-MAPGEN_VERSION: Final = 1
+MAPGEN_VERSION: Final = 2
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 6
+MATCH_VERSION: Final = 7
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500
