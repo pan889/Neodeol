@@ -6,24 +6,25 @@
 
 ## 1. 지금 무엇이 돌아가는가
 
-현재 단계는 **Phase 0** 이다. 실제로 존재하는 것은 두 개다.
+현재 단계는 **Phase 3 (서버 미러)** 이다. `docs/roadmap.md` 가 기준이다.
 
 | 것 | 어디 | 무엇 | URL |
 |---|---|---|---|
 | 모래 자동자 샌드박스 | `tools/sandbox/` | Phase 0. 자동자를 손으로 만져보는 하네스 | `/sandbox/` |
 | 손맛 프로토타입 | `tools/prototype/` | Phase 1. 탱크·탄도·바람·핫시트 | `/tools/prototype/` |
 | 탄도 검산기 | `tools/ballistics-check.mjs` | `simulation.md` §8 표를 재생성 | — |
-| 서버 스캐폴드 | `server/` | 정적 서빙 + 헬스체크 + 상수 노출. **게임 로직은 없다** | `/` |
+| 클라이언트 sim | `client/src/sim/` | Phase 2. 정수 TS 이식. **부동소수점 0개** | — |
+| 서버 sim | `server/src/talus/sim/` | Phase 3. numpy 번역. 지형·탄도 | — |
+| 골든 리플레이 | `tests/replays/` | 교차 검증의 기준선 (20 + 장기 2) | — |
+| 서버 스캐폴드 | `server/` | 정적 서빙 + 헬스체크 + 상수 노출 | `/` |
 
 프로토타입은 샌드박스의 `automaton.js` 를 **그대로 재사용한다.** 지형 자동자 사본은 하나뿐이다.
 
-`sim/`, `room/`, `lobby/` 는 비어 있다. `docs/roadmap.md` 의 단계 순서를 지킨다 —
-지형이 확정되기 전에 서버 로직을 만들면 두 구현이 갈라진 채로 굳는다.
+**포팅 방향은 브라우저 → TS → Python 이다.** TS 가 진실의 원본이고 Python 은 번역이다.
+번역이 맞는지는 골든 리플레이가 판정한다 (§4.2).
 
-> **왜 Phase 0 인데 서버가 있는가.** 로드맵 Phase 0 의 "하지 않는 것"에 서버가 들어 있다.
-> 여기 있는 서버는 **게임 서버가 아니라 개발 인프라**다 — 샌드박스를 URL 로 열고, Redis/PostgreSQL
-> 연결이 실제로 되는지 확인하고, 상수 표의 기계 판독 사본을 노출한다.
-> `talus/sim/` 에 코드를 넣는 것은 여전히 Phase 3 이다.
+`room/`, `net/` 의 게임 로직과 `lobby/` 는 아직 비어 있다 — Phase 4 다.
+`weapons.py` · `match.py` 도 아직 없다 (`roadmap.md` Phase 3 의 남은 항목).
 
 ---
 
@@ -163,24 +164,60 @@ docker compose exec server python -m pytest /app/tests -q
 | `test_no_float` | 동작 | `sim/` 에 float·`/`·`math.*` 가 들어오는 것 |
 | `test_constants_stable` | 동작 | `SIM_VERSION` 이 프로세스마다 달라지는 것 |
 | `test_constants_are_integers` | 동작 | 상수표에 실수가 섞이는 것 |
-| `test_replay_stable` | skip (Phase 3) | — |
-| `test_trig_table` | skip (Phase 2) | — |
-| `test_cross_sim` | skip (Phase 3) | — |
+| `test_seeds_actually_differ` | 동작 | 시드를 무시하는 구현이 `test_replay_stable` 을 통과하는 것 |
+| `test_interleaved_runs_do_not_contaminate` | 동작 | 게이트 캐시가 시드 사이에 오염되는 것 |
+| `test_settle_terminates` | 동작 (전 격자판은 `slow`) | 정착이 안 끝나 **턴이 안 끝나는 것** |
+| `test_trig_table` | 동작 | `trig.bin` 이 서버·클라에서 달라지는 것 |
+| `test_cross_sim` | 동작 (20개) | 스텝 단위로 Python 이 TS 와 갈라지는 것 |
+| `test_replay_stable` | 동작 (60턴 / 1000턴은 `slow`) | **턴 경계**에서 갈라지는 것 |
+| `test_long_replay_is_long_enough` | 동작 | 턴이 no-op 인 리플레이로 완료 조건을 형식만 채우는 것 |
+| `test_long_replays_divide_the_work` | 동작 | 장기 골든 한쪽만 재생성해 짝이 어긋나는 것 / 둘이 같은 성격이 되어 시간만 두 배 쓰는 것 |
+| `test_flat_range_matches_doc_table` | 동작 | 탄도가 TS·문서 표와 갈라지는 것 |
+| `test_ballistics_fits_int32` | 동작 | 중간값이 int32 를 넘어 TS 의 `>>` 절단과 갈라지는 것 |
 
 > **skip 을 지우고 `pass` 로 바꾸지 마라.** 결정론 버그를 은폐하는 가장 흔한 경로다.
-> `sim/` 이 생기면 `test_replay_stable` 은 자동으로 skip 이 풀리고 실패한다. 그게 의도다.
+> 위 표의 skip 은 Phase 3 에서 전부 풀렸다. 골든이 없으면 다시 skip 으로 돌아가는데,
+> 그건 "통과"가 아니라 "검사 안 함"이다 — `npm --prefix client run test:cross-sim` 이
+> 골든 개수를 세서 20개 미만이면 실패시킨다.
 
 ### 4.3 결정론 게이트
 
-`CLAUDE.md` §결정론 게이트가 요구하는 두 명령 중 지금 실행 가능한 것은 첫 번째뿐이다.
-
 ```bash
-docker compose exec server python -m pytest /app/tests/test_determinism.py     # 실행 가능
-npm run test:cross-sim                                                          # Phase 3 이후
+docker compose exec server python -m pytest /app/tests/test_determinism.py   # 약 2분
+npm --prefix client run test:cross-sim              # 60턴까지. 약 5분
+npm --prefix client run test:cross-sim -- --slow    # 1000턴 포함. 약 25분
+
+# 릴리스 전에만 — 전 격자 정착 종료성 (지형 하나가 약 60초)
+docker compose exec server python -m pytest /app/tests/test_determinism.py -m slow
 ```
 
-교차 검증은 Python `sim/` 과 골든 리플레이 포맷이 있어야 성립하고, 둘 다 Phase 3 산출물이다.
-`docs/decisions.md` B2 참조.
+교차 검증의 **대조는 Python 이 한다** (`server/tests/test_cross_sim.py`). npm 스크립트는
+골든 무결성(사이드카 해시, 개수)만 보고 재생을 pytest 에 넘긴다. 도커가 떠 있으면 컨테이너에서,
+아니면 호스트 `python3` 로 돌린다.
+
+`slow` 마크는 기본 제외다 (`server/pyproject.toml` 의 `addopts`). 1000턴 리플레이는 재생만
+10분 가까이 걸려서, 상시 게이트에 넣으면 아무도 게이트를 안 돌리게 된다.
+상시 그물은 60턴짜리(`terrain-long`, 178,031스텝)다.
+
+두 장기 리플레이는 **역할을 나눠 맡는다.** 둘 다 크게 만들면 검증 비용이 규칙 변경을
+막는 수준이 된다 — 대형 폭발로 1000턴을 돌리면 300만 스텝이라 생성 34분 + 재생 57분이다.
+
+| | 턴 | 폭발 반경 | 총 스텝 | 무엇을 보는가 |
+|---|---|---|---|---|
+| `terrain-long` | 60 | 14~59 (대형) | 178,031 | 한 턴의 **규모** |
+| `terrain-long1k` | 1000 | 8~27 (중간) | 953,354 | **지속** — 누적 상태가 오래 가도 안 어긋나는가 |
+
+> **`server/pyproject.toml` 을 고쳤으면 컨테이너를 재생성한다.**
+>
+> ```bash
+> docker compose up -d --force-recreate server
+> ```
+>
+> compose 가 이 파일을 **단일 파일 바인드 마운트**로 올리는데, 에디터가 파일을 원자적 교체
+> (새 inode 에 쓰고 rename)로 저장하면 컨테이너 쪽 마운트는 지워진 옛 inode 를 계속 가리킨다.
+> 증상은 `FileNotFoundError: '/app/pyproject.toml'` 이고, 소스(`/app/src`)는 디렉터리
+> 마운트라 이 문제가 없어서 "왜 이것만" 하고 헤매기 쉽다. `restart` 로는 안 풀린다 —
+> 마운트를 다시 해석하려면 컨테이너를 새로 만들어야 한다.
 
 ---
 

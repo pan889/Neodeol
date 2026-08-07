@@ -69,10 +69,12 @@
 ```
 server/src/talus/
   sim/          순수 시뮬레이션. I/O 없음. 여기가 게임의 진실.
+    intmath.py    floor_div · isqrt · iabs · clamp_int · hash32 (numpy 벡터 + 스칼라)
+    trig.py       tables/trig.bin 조회. **파일은 호출자가 읽어 넣는다** (절대 규칙 1)
     terrain.py    MaterialGrid, 모래 자동자, 폭발 카빙
     ballistics.py 탄도 적분, 충돌 판정
-    weapons.py    무기 정의 테이블과 발동 로직
-    match.py      라운드/턴 진행, 경제, 승패 판정
+    weapons.py    무기 정의 테이블과 발동 로직        (Phase 3 남음)
+    match.py      라운드/턴 진행, 경제, 승패 판정      (Phase 3 남음)
   room/         턴 루프, 입력 수집, 이벤트 브로드캐스트
   net/          FastAPI, WebSocket, msgpack 인코딩
   lobby/        매치메이킹, 룸 배정, JWT 발급 (stateless)
@@ -135,14 +137,26 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py
 #      정적 float 검사 + 100회 재생 재현성 + JS 참조 구현과 비트 단위 대조
 npm --prefix client test
 
-# 2) 서버 ↔ 클라이언트 교차 검증 — Phase 3 이후
-#    동일 시드 + 동일 입력 로그로 양쪽을 돌려 매 턴 지형 체크섬 비교
-npm run test:cross-sim
+# 2) 서버 ↔ 클라이언트 교차 검증 — 지금 실행 가능하다 (Phase 3)
+#    동일 시드 + 동일 초기 격자로 양쪽을 돌려 체크섬 비교. 약 5분
+npm --prefix client run test:cross-sim
+
+# 2.5) 장기 대조 — 약 25분. 릴리스 전과 자동자 규칙 변경 시에만
+#      1000턴 리플레이 + 전 격자 정착 종료성
+npm --prefix client run test:cross-sim -- --slow
+docker compose exec server python -m pytest /app/tests/test_determinism.py -m slow
 ```
 
-**(2)는 Phase 3 이전에는 존재하지 않는다.** Python `sim/` 과 골든 리플레이 포맷이 모두
-Phase 3 산출물이기 때문이다. 그때까지 `sim/` 을 건드리는 변경은 (0)과 (1)로 판정한다.
-골든 리플레이 포맷 자체가 아직 미결이다 — `docs/decisions.md` B2.
+**(2)의 대조는 Python 이 한다** (`server/tests/test_cross_sim.py`). npm 스크립트는 골든의
+무결성만 확인하고 재생을 pytest 에 넘긴다 — 검증 로직을 TS 에도 두면 같은 로직이 두 벌이 되고,
+둘이 어긋날 때 **어느 쪽이 맞는지 판정할 방법이 없다.**
+
+대조 단위는 **스텝**과 **턴** 두 가지다. 턴 = `carve/deposit → 정착 → 연결성 재검사` 루프
+전체(`terrain.md` §6.1). 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을 잡은 전례가 있으므로
+둘 중 하나만 남기지 마라.
+
+초기 지형 생성기 명세(`docs/decisions.md` B1)가 미결이라 리플레이는 초기 격자를
+`*.grid.gz` 사이드카로 싣는다. B1 이 확정되면 사이드카를 지우고 `mapSeed` 만 남긴다.
 
 교차 검증은 골든 리플레이 파일(`tests/replays/*.jsonl`)을 재생한다.
 의도적으로 밸런스를 바꿔 리플레이가 깨졌다면, **깨진 이유를 커밋 메시지에 적고** 골든 파일을 재생성한다.

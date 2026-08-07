@@ -19,9 +19,12 @@ where = ["src"]
 # CLAUDE.md §결정론 게이트가 `pytest server/tests/test_determinism.py` 를 호출한다.
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-q --strict-markers"
+# `slow` 는 기본 제외다. 1000턴 리플레이 재생이 25분대라 매 변경마다 돌릴 수 없다.
+# 돌릴 때는 `pytest -m slow` (또는 `-m "slow or not slow"` 로 전부).
+addopts = "-q --strict-markers -m 'not slow'"
 markers = [
   "determinism: 결정론 게이트. sim/ 을 건드리는 모든 변경이 통과해야 한다.",
   "crosssim: Python·TS 교차 검증. 골든 리플레이가 필요하다.",
+  "slow: 수십 분 걸린다. 기본 제외 — 릴리스 전과 sim/ 규칙 변경 시에만 돌린다.",
 ]
 asyncio_mode = "auto"

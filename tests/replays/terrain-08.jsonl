@@ -1,0 +1,22 @@
+{"v":1,"name":"terrain-08","kind":"terrain-only","note":"초기 격자를 사이드카로 싣는다. 맵 생성기(decisions.md B1) 확정 시 mapSeed 로 대체한다","seed":57,"cfg":{"slideSandQ8":256,"slideSoilQ8":48,"slideScreeQ8":0,"slideGateStatic":true,"bothDirections":false,"blastResistQ8":{"1":256,"2":208,"3":256,"4":140}},"gridFile":"terrain-08.grid.gz","gridSha256":"994f932abb0d4587e7f4c3a438166fc9d6ff28879e597602e9c5edb07f0d1c1f","steps":400,"sampleEvery":20}
+{"step":0,"checksum":"B1506347","mass":339253,"mobile":-1}
+{"step":20,"checksum":"0592D885","mass":339253,"mobile":4765}
+{"step":40,"checksum":"20063329","mass":339253,"mobile":7654}
+{"step":60,"checksum":"6C00098D","mass":339253,"mobile":8280}
+{"step":80,"checksum":"2060250D","mass":339253,"mobile":6488}
+{"step":100,"checksum":"96F846CB","mass":339253,"mobile":3076}
+{"step":120,"checksum":"54D86499","mass":339253,"mobile":855}
+{"step":140,"checksum":"4C826875","mass":339253,"mobile":457}
+{"step":160,"checksum":"1E364487","mass":339253,"mobile":460}
+{"step":180,"checksum":"ABFDC757","mass":339253,"mobile":461}
+{"step":200,"checksum":"F348B585","mass":339253,"mobile":455}
+{"step":220,"checksum":"E65A08ED","mass":339253,"mobile":447}
+{"step":240,"checksum":"450EC0BF","mass":339253,"mobile":440}
+{"step":260,"checksum":"E2D59C15","mass":339253,"mobile":444}
+{"step":280,"checksum":"8F46CEB3","mass":339253,"mobile":427}
+{"step":300,"checksum":"1A686A5B","mass":339253,"mobile":433}
+{"step":320,"checksum":"E85B0397","mass":339253,"mobile":440}
+{"step":340,"checksum":"65743DF1","mass":339253,"mobile":419}
+{"step":360,"checksum":"B84BFD15","mass":339253,"mobile":412}
+{"step":380,"checksum":"ADDCB8BD","mass":339253,"mobile":412}
+{"step":400,"checksum":"0D1F6333","mass":339253,"mobile":400}

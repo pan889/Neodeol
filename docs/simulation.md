@@ -445,13 +445,31 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
 
 `sim/`을 건드리는 PR은 전부 통과해야 한다. `CLAUDE.md` §결정론 게이트.
 
+**게이트 (1) — 서버 자기 자신과의 재현성.** `server/tests/test_determinism.py`.
+골든 파일 없이도 항상 돌아간다.
+
 | 테스트 | 내용 |
 |---|---|
 | `test_replay_stable` | 같은 시드 + 같은 입력 → 100회 반복해도 동일 체크섬 |
+| `test_seeds_actually_differ` | 시드가 결과에 실제로 먹는다 (시드를 무시하는 구현을 막는다) |
+| `test_interleaved_runs_do_not_contaminate` | 시드를 번갈아 돌려도 각자의 결과가 유지된다 |
+| `test_settle_terminates` | 무작위 지형에 대해 정착이 상한 내 종료 |
 | `test_no_float` | `sim/` 전체를 AST 파싱해 float 리터럴·`/` 연산자·`math.*` 호출 검출 |
 | `test_trig_table` | `tables/trig.bin`의 해시가 고정값과 일치 |
-| `test_cross_sim` | 골든 리플레이를 Python·TS 양쪽에서 재생, 매 턴 체크섬 비교 |
-| `test_settle_terminates` | 무작위 지형 1000개에 대해 정착이 상한 내 종료 |
+
+**게이트 (2) — TS 와의 교차 검증.** `server/tests/test_cross_sim.py`.
+골든 리플레이가 있어야 성립하므로 파일을 분리했다.
+
+| 테스트 | 내용 |
+|---|---|
+| `test_cross_sim` | 골든 20개를 **스텝** 단위로 재생, 표본마다 체크섬·질량 비교 |
+| `test_replay_stable` | 장기 골든을 **턴** 단위로 재생 (60턴 / 1000턴은 `slow`) |
+| `test_long_replay_is_long_enough` | 턴이 no-op 인 리플레이로 완료 조건을 형식만 채우지 못하게 |
+
+**대조 단위가 두 가지인 이유.** 턴 = `carve/deposit → 정착 → 연결성 재검사` 루프 전체다
+(`terrain.md` §6.1). 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을 잡은 전례가 있다 —
+원인은 자동자가 아니라 골든 생성기가 **사이드카에 담기지 않은 상태**(`step` 카운터)에
+의존한 것이었고, 스텝 대조로는 영원히 안 잡힌다. 둘 중 하나만 남기지 않는다.
 
 `test_no_float`이 과하다고 느껴질 수 있는데, **결정론 버그는 재현이 어렵고 발견이 늦다.**
 정적 검사로 잡을 수 있는 건 정적 검사로 잡는다.
@@ -462,7 +480,8 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
 
 **선택지와 추천안은 `docs/decisions.md` 에 있다.** 여기서는 목록만 유지한다.
 
-- [ ] `GRAVITY` / `POWER_SCALE` — 사거리가 목표의 1/4 이다. §8.1, `decisions.md` C3
+- [x] `GRAVITY` / `POWER_SCALE` — B12 확정(사거리를 맵 폭에 맞춘다)에 따라 `POWER_SCALE = 624`.
+      실측 1,899 px = 맵 폭의 98.9% 이고 Python·TS 가 같은 값을 낸다. §8.1, `decisions.md` C3
 - [ ] `WIND_MAX` — "중력의 절반"은 검산과 반대다. §8.2, `decisions.md` C4
 - [ ] 포신 끝 위치 산출 규칙과 `BARREL_LEN` — §4.1
 - [ ] `DAMAGE_SHIFT` 와 무기별 `blastRadius` 의 2의 거듭제곱 제약 — §5.1, `decisions.md` C1

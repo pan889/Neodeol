@@ -30,3 +30,6 @@ build/
 # tables/*.bin 은 **커밋한다.** 서버와 클라이언트가 같은 바이트를 봐야 하므로
 # 생성 스크립트만 커밋하는 것으로는 부족하다. docs/simulation.md §3, tables/README.md
 # tests/replays/*.jsonl 도 커밋한다. 골든 리플레이가 결정론의 회귀 기준선이다.
+
+# 감사·디버깅용 임시 프로브 (에이전트가 만든다)
+.probe/

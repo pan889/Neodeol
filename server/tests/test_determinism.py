@@ -6,12 +6,15 @@
 |---|---|---|
 | `test_no_float` | **지금 동작한다** | `sim/` 이 비어 있어도 유효한 정적 검사다 |
 | `test_constants_stable` | **지금 동작한다** | 상수 해시가 재현되는지 |
-| `test_replay_stable` | Phase 3 대기 | `sim/` 이 없다 |
-| `test_trig_table` | **지금 동작한다** | Phase 2 에서 `tables/trig.bin` 을 커밋했다 |
-| `test_cross_sim` | Phase 3 대기 | 골든 리플레이가 없다 |
+| `test_replay_stable` | **동작한다** (Phase 3) | 100회 재생 + 시드 간섭 |
+| `test_trig_table` | **동작한다** | Phase 2 에서 `tables/trig.bin` 을 커밋했다 |
+| `test_cross_sim_gate_exists` | **동작한다** | 본체는 `test_cross_sim.py` |
 
-남은 두 항목은 Phase 3 산출물이라 `skip` 으로 남는다. **`skip` 을 지우고 `pass` 로
-바꾸지 마라.** 결정론 버그를 은폐하는 가장 흔한 경로다.
+이 파일은 **게이트 (1) — 서버 자기 자신과의 재현성**이다. TS 를 보지 않는다.
+TS 와의 대조(게이트 (2))는 `test_cross_sim.py` 가 하고, 그건 골든 파일이 있어야 성립하므로
+분리해 두었다. 여기까지가 골든 없이도 항상 돌아가는 그물이다.
+
+**`skip` 을 지우고 `pass` 로 바꾸지 마라.** 결정론 버그를 은폐하는 가장 흔한 경로다.
 """
 
 from __future__ import annotations
@@ -19,10 +22,14 @@ from __future__ import annotations
 import ast
 import pathlib
 
+import numpy as np
 import pytest
 
 import talus.sim
 from talus import constants
+
+#: 격자 폭. `talus.sim.terrain` 을 import 하지 않고도 쓰려고 여기 둔다
+W_FULL = 960
 
 # `sim/` 은 설치된 패키지에서 찾는다. 저장소 레이아웃을 가정하면 컨테이너 안에서
 # (/app/tests 로 마운트되어 상대 경로가 달라진다) 깨진다.
@@ -205,17 +212,81 @@ def test_slide_chance_gate_is_integer_scaled() -> None:
 
 
 # ══════════════════════════════════════════════════════════════════════
-# Phase 2~3 대기 — skip 을 지우지 마라
+# 서버 자기 자신과의 재현성 — CLAUDE.md §결정론 게이트 (1)
+#
+# 게이트 (2)(교차 검증)와 다르다. 여기서는 TS 를 보지 않는다.
+# **같은 프로세스 안에서 같은 입력을 반복 실행했을 때 같은 결과가 나오는가**만 본다.
+# 이게 깨지는 원인은 대개 모듈 전역 상태가 실행 사이에 안 지워지는 것이고
+# (`_gate_ok` 캐시, 활성 행 비트맵, `step` 카운터), 그건 교차 검증이 못 잡는다 —
+# 양쪽이 똑같이 오염되면 체크섬은 사이좋게 일치한다.
 # ══════════════════════════════════════════════════════════════════════
 
 _SIM_MODULES = sorted(p.stem for p in SIM_DIR.glob("*.py") if p.stem != "__init__")
+
+
+def _run_once(seed: int, steps: int) -> tuple[int, int, int]:
+    """시드에서 격자를 만들고 carve → N스텝. (체크섬, 질량, 이동 셀 수)"""
+    from talus.sim import terrain as T
+
+    T.CFG.seed = seed
+    T.reset_gate_cache()
+    g = T.grid
+    g.fill(T.EMPTY)
+    g2 = g.reshape(T.H, T.W)
+    xs = np.arange(T.W)
+    # 정수 전용 톱니 지형. 결정론만 보므로 모양은 단순해도 된다
+    top = 150 + ((xs * (7 + (seed & 7))) % 90)
+    for mat, thick in ((T.SAND, 20), (T.SOIL, 30), (T.SCREE, 14), (T.ROCK, 60)):
+        for k in range(thick):
+            rows = top + k
+            g2[rows, xs] = mat
+        top = top + thick
+    g2[500:, :] = T.BEDROCK
+
+    T.connectivity()
+    T.mark_all()
+    T.set_step(0)
+    T.carve(400 + (seed & 63), 230, 40)
+    moved = 0
+    for _ in range(steps):
+        moved += T.step().moved
+    return T.checksum(), T.mass_count(), moved
 
 
 @pytest.mark.determinism
 @pytest.mark.skipif(not _SIM_MODULES, reason="sim/ 이 비어 있다 — roadmap Phase 3")
 def test_replay_stable() -> None:
     """같은 시드 + 같은 입력 → 100회 반복해도 동일 체크섬. (simulation.md §9)"""
-    pytest.fail("Phase 3 에서 구현한다. sim/ 이 생겼는데 이 테스트가 없으면 게이트가 뚫린다.")
+    base = _run_once(0x31, 120)
+    assert base[2] > 0, "아무것도 안 움직였다 — 시나리오가 자동자를 안 돌리고 있다"
+    for i in range(1, 100):
+        assert _run_once(0x31, 120) == base, f"{i}회차에서 갈라졌다 — 전역 상태가 남는다"
+
+
+@pytest.mark.determinism
+@pytest.mark.skipif(not _SIM_MODULES, reason="sim/ 이 비어 있다 — roadmap Phase 3")
+def test_seeds_actually_differ() -> None:
+    """시드가 다르면 결과도 다르다.
+
+    `test_replay_stable` 만 있으면 시드를 완전히 무시하는 구현도 통과한다.
+    """
+    sums = {s: _run_once(s, 120)[0] for s in (0x11, 0x31, 0x55, 0xA3, 0xF0)}
+    assert len(set(sums.values())) == len(sums), f"시드가 결과에 안 먹는다: {sums}"
+
+
+@pytest.mark.determinism
+@pytest.mark.skipif(not _SIM_MODULES, reason="sim/ 이 비어 있다 — roadmap Phase 3")
+def test_interleaved_runs_do_not_contaminate() -> None:
+    """시드를 번갈아 돌려도 각자의 결과가 유지된다.
+
+    `test_replay_stable` 은 같은 시드만 반복하므로, 시드에 딸린 캐시
+    (`_gate_ok`)가 갱신 없이 재사용돼도 통과한다. 여기서 그걸 잡는다.
+    """
+    a0 = _run_once(0x11, 80)
+    b0 = _run_once(0xA3, 80)
+    for _ in range(5):
+        assert _run_once(0x11, 80) == a0, "0xA3 을 거친 뒤 0x11 이 달라졌다"
+        assert _run_once(0xA3, 80) == b0, "0x11 을 거친 뒤 0xA3 이 달라졌다"
 
 
 #: `tools/gen_trig.py` 가 생성한 표의 고정 해시.
@@ -256,10 +327,101 @@ def test_trig_table() -> None:
 
 
 @pytest.mark.crosssim
-@pytest.mark.skipif(
-    REPLAY_DIR is None or not REPLAY_DIR.is_dir() or not list(REPLAY_DIR.glob("*.jsonl")),
-    reason="tests/replays/*.jsonl 이 없다 — roadmap Phase 3",
-)
-def test_cross_sim() -> None:
-    """골든 리플레이를 Python·TS 양쪽에서 재생, 매 턴 체크섬 비교. (simulation.md §9)"""
-    pytest.fail("Phase 3 에서 구현한다.")
+def test_cross_sim_gate_exists() -> None:
+    """게이트 (2)가 실재하는지 확인한다.
+
+    교차 검증 본체는 `test_cross_sim.py` 에 있다 (골든 로딩·사이드카 검증이 딸려 있어
+    이 파일에 두면 결정론 게이트가 골든 파일 유무에 통째로 묶인다).
+    여기서는 **그 파일이 사라지거나 비는 것**만 막는다 — 파일을 지우면 게이트 (2)는
+    조용히 0건이 되고, pytest 는 초록색을 보여준다. 그게 가장 위험한 상태다.
+    """
+    body = (pathlib.Path(__file__).parent / "test_cross_sim.py").read_text(encoding="utf-8")
+    for name in ("def test_cross_sim(", "def test_replay_stable("):
+        assert name in body, f"test_cross_sim.py 에 {name} 이 없다 — 게이트 (2)가 비었다"
+    assert "pytest.fail(" not in body, "교차 검증이 아직 자리표시자다"
+
+
+def _scatter(seed: int, x0: int, x1: int, y0: int, y1: int) -> None:
+    """재질을 무작위로 흩뿌린다 — 자연 지형보다 훨씬 불안정한 적대적 입력.
+
+    자연스러운 지형은 이미 대충 안식각에 가까워서 몇 스텝이면 정착한다.
+    규칙이 순환(위로 올라가는 이동, 두 셀이 자리를 맞바꾸는 이동)을 만들면
+    그건 정착이 아니라 **영원히 안 끝나는 상태**이고, 자연 지형으로는 잘 안 드러난다.
+    """
+    from talus.sim import terrain as T
+
+    T.CFG.seed = seed
+    T.reset_gate_cache()
+    T.grid.fill(T.EMPTY)
+    g2 = T.grid.reshape(T.H, T.W)
+    xs = np.arange(x0, x1, dtype=np.uint32)
+    for row in range(y0, y1):
+        h = T.hash32(np.uint32(seed), xs, np.uint32(row), np.uint32(0))
+        keep = (h >> np.uint32(9)) % np.uint32(3) != 0
+        g2[row, x0:x1] = np.where(keep, (h % 6).astype(np.uint8), T.EMPTY)
+    g2[522:, :] = T.BEDROCK
+    T.connectivity()
+    T.mark_all()
+    T.set_step(0)
+
+
+def _settle(limit: int) -> int:
+    """정착까지의 스텝 수. 상한에 걸리면 -1."""
+    from talus.sim import terrain as T
+
+    steps = 0
+    while steps < limit:
+        steps += 1
+        if T.step().mobile == 0:
+            return steps
+    return -1
+
+
+#: 정착 상한. `MAX_SETTLE_STEPS` (decisions.md A3) 가 미결이라 여기서는 넉넉히 잡는다 —
+#: 이 테스트가 보는 것은 "언제 끝나는가"가 아니라 **"끝나기는 하는가"** 다.
+SETTLE_LIMIT = 60000
+
+
+@pytest.mark.determinism
+@pytest.mark.skipif(not _SIM_MODULES, reason="sim/ 이 비어 있다 — roadmap Phase 3")
+def test_settle_terminates() -> None:
+    """무작위 지형에 대해 정착이 상한 내 종료한다. (`simulation.md` §9)
+
+    **정착이 안 끝나면 턴이 안 끝난다.** 증상은 "가끔 게임이 멈춤"이라 재현이 거의 불가능하다.
+
+    §5.2 의 정착 판정은 근사가 아니라 정확하다 — 가동 셀이 0개면 어떤 셀도 못 움직인다.
+    종료는 "셀이 스텝당 최대 1칸 아래로만 간다"에서 따라오는데, **규칙을 잘못 고치면
+    그 성질이 깨진다** (위로 올라가는 이동이 생기면 순환한다).
+
+    여기서는 320열 × 240행에 흩뿌린다. 전 격자(960×400)로 하면 지형 하나가 60초라
+    상시 게이트에서 빠지고, 그러면 아무도 안 돌린다. 전 격자판은 `slow` 로 따로 있다 —
+    순환 규칙은 규모와 무관하게 **첫 지형에서** 드러나므로 좁은 판이 그물 역할을 한다.
+    """
+    worst = 0
+    for i in range(8):
+        seed = 0x40 + i
+        _scatter(seed, 320, 640, 200, 440)
+        steps = _settle(SETTLE_LIMIT)
+        assert steps > 0, f"시드 0x{seed:02x}: {SETTLE_LIMIT} 스텝에 정착하지 않았다"
+        worst = max(worst, steps)
+    assert worst < SETTLE_LIMIT
+
+
+@pytest.mark.determinism
+@pytest.mark.slow
+@pytest.mark.skipif(not _SIM_MODULES, reason="sim/ 이 비어 있다 — roadmap Phase 3")
+def test_settle_terminates_full_grid() -> None:
+    """전 격자를 흩뿌려도 정착한다. 지형 하나가 약 60초라 `slow` 로 분리한다.
+
+    §11.3 의 "대형 붕괴 27,249스텝"과 같은 규모다 — 실전에는 안 나오지만
+    (가장 큰 무기가 12,851셀이라 10배 차이) 규칙의 종료성은 여기서 판정한다.
+    """
+    worst = 0
+    for i in range(6):
+        seed = 0x80 + i
+        _scatter(seed, 0, W_FULL, 120, 520)
+        steps = _settle(SETTLE_LIMIT)
+        assert steps > 0, f"시드 0x{seed:02x}: {SETTLE_LIMIT} 스텝에 정착하지 않았다"
+        worst = max(worst, steps)
+    # 실측 16,584 ~ 24,688 스텝. 상한에 2배 이상 여유가 있어야 한다
+    assert worst < SETTLE_LIMIT // 2, f"최악 {worst} 스텝 — 상한 여유가 사라졌다"
