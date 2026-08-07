@@ -85,7 +85,7 @@ MAPGEN_VERSION: Final = 1
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 5
+MATCH_VERSION: Final = 6
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500

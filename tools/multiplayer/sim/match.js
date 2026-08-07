@@ -4,7 +4,7 @@ import * as T from "./terrain.js";
 import * as B from "./ballistics.js";
 import * as Wp from "./weapons.js";
 import * as M from "./mapgen.js";
-export const MATCH_VERSION = 5;
+export const MATCH_VERSION = 6;
 export const AMMO_INFINITE = 0x7fffffff;
 export const RULES = {
     rounds: 5,
@@ -99,8 +99,44 @@ export function setIntent(player, candidate) {
     player.intent = intent;
     return intent;
 }
+function applyFall(players, player, fall, owner) {
+    const events = [];
+    if (fall < 0) {
+        player.hp = 0;
+        events.push({
+            t: "outofmap",
+            slot: player.slot
+        });
+        return events;
+    }
+    if (fall === 0) return events;
+    const damage = B.fallDamage(fall);
+    if (damage <= 0) return events;
+    if (player.items.parachute > 0) {
+        player.items.parachute--;
+        events.push({
+            t: "parachute",
+            slot: player.slot,
+            fallPx: fall
+        });
+        return events;
+    }
+    player.hp -= damage;
+    creditDamage(players, owner, damage);
+    events.push({
+        t: "falldamage",
+        slot: player.slot,
+        fallPx: fall,
+        dmg: damage,
+        by: owner
+    });
+    return events;
+}
 export function applyMove(player, dxCells) {
-    if (!player.alive || dxCells === 0) return 0;
+    if (!player.alive || dxCells === 0) return {
+        moved: 0,
+        fall: 0
+    };
     const budget = player.items.fuel * RULES.fuelCellsPerUnit;
     let wanted = dxCells < 0 ? -dxCells : dxCells;
     if (wanted > budget) wanted = budget;
@@ -115,12 +151,16 @@ export function applyMove(player, dxCells) {
         player.x = nextX;
         moved++;
     }
+    let fall = 0;
     if (moved > 0) {
         const used = floorDiv(moved + RULES.fuelCellsPerUnit - 1, RULES.fuelCellsPerUnit);
         player.items.fuel = player.items.fuel > used ? player.items.fuel - used : 0;
-        B.reseatTank(player);
+        fall = B.reseatTank(player);
     }
-    return moved;
+    return {
+        moved,
+        fall
+    };
 }
 export function resolveTurn(players, wind) {
     assertPlayers(players);
@@ -129,12 +169,25 @@ export function resolveTurn(players, wind) {
     const events = [];
     for (const player of players){
         if (!player.alive || player.intent === null) continue;
-        const moved = applyMove(player, player.intent.moveDx);
-        if (moved > 0) events.push({
-            t: "move",
-            slot: player.slot,
-            cells: moved
-        });
+        const { moved, fall } = applyMove(player, player.intent.moveDx);
+        if (moved > 0) {
+            events.push({
+                t: "move",
+                slot: player.slot,
+                cells: moved
+            });
+            events.push(...applyFall(players, player, fall, null));
+            if (player.hp <= 0) {
+                player.hp = 0;
+                player.alive = false;
+                events.push({
+                    t: "dead",
+                    slot: player.slot,
+                    by: null
+                });
+                continue;
+            }
+        }
         player.shieldUp = player.intent.useShield && player.items.shield > 0;
         if (player.shieldUp) {
             player.items.shield--;
@@ -276,34 +329,7 @@ export function applyPhase(players, lastBlastOwner) {
     const events = [];
     for (const player of players){
         if (!player.alive) continue;
-        const fall = B.reseatTank(player);
-        if (fall < 0) {
-            player.hp = 0;
-            events.push({
-                t: "outofmap",
-                slot: player.slot
-            });
-        } else if (fall > 0) {
-            const damage = B.fallDamage(fall);
-            if (damage > 0 && player.items.parachute > 0) {
-                player.items.parachute--;
-                events.push({
-                    t: "parachute",
-                    slot: player.slot,
-                    fallPx: fall
-                });
-            } else if (damage > 0) {
-                player.hp -= damage;
-                creditDamage(players, lastBlastOwner, damage);
-                events.push({
-                    t: "falldamage",
-                    slot: player.slot,
-                    fallPx: fall,
-                    dmg: damage,
-                    by: lastBlastOwner
-                });
-            }
-        }
+        events.push(...applyFall(players, player, B.reseatTank(player), lastBlastOwner));
         const buriedFraction = B.buriedFraction(player);
         const wasBuried = player.buried;
         player.buried = buriedFraction >= B.CFG.burialPermille;

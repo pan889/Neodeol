@@ -141,3 +141,118 @@ def test_forced_settle_does_not_desync_snapshot_roundtrip() -> None:
     )
     assert a.settle.steps == b.settle.steps
     assert a.mass == b.mass
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 낙하는 원인을 가리지 않는다 · 매몰은 반드시 풀린다  (decisions.md B13, match.md §5.1)
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _cliff() -> None:
+    """왼쪽 고지(y=200) · 오른쪽 저지(y=500) 절벽."""
+    T.CFG.seed = 1
+    T.reset_gate_cache()
+    T.grid.fill(T.EMPTY)
+    g2 = T.grid.reshape(T.H, T.W)
+    g2[200:522, :480] = T.ROCK
+    g2[500:522, 480:] = T.ROCK
+    g2[522:, :] = T.BEDROCK
+    T.connectivity()
+    T.mark_all()
+    T.set_step(0)
+
+
+def test_fuel_walk_off_cliff_hurts_like_a_collapse() -> None:
+    """연료로 걸어 내려간 낙하도 지형 붕괴와 **같은 피해**를 받는다.
+
+    예전에는 `apply_move` 가 `reseat_tank()` 의 반환값을 버려서 600 px 절벽이 무피해였다.
+    300골드 연료가 무제한 낙하 무효 아이템이었다.
+    """
+    _cliff()
+    walker = Match.make_player(0, "A", False, 460 * B.CELL_SUBPX)
+    walker.y = B.surface_sub_y(walker.x)
+    walker.items.fuel = 3
+    other = Match.make_player(1, "B", False, 100 * B.CELL_SUBPX)
+    other.y = B.surface_sub_y(other.x)
+
+    moved, fall = Match.apply_move(walker, 28)
+    assert moved == 28, f"절벽을 넘어가지 못했다: {moved}셀"
+    assert fall > 500, f"낙하가 안 잡혔다: {fall} px"
+
+    walker.intent = Match.Intent(
+        angle10=450, power=500, weapon_id=0, move_dx=0, use_shield=False
+    )
+    # resolve_turn 이 이동 낙하를 피해로 바꾼다
+    _cliff()
+    w2 = Match.make_player(0, "A", False, 460 * B.CELL_SUBPX)
+    w2.y = B.surface_sub_y(w2.x)
+    w2.items.fuel = 3
+    w2.intent = Match.Intent(
+        angle10=450, power=500, weapon_id=0, move_dx=28, use_shield=False
+    )
+    o2 = Match.make_player(1, "B", False, 100 * B.CELL_SUBPX)
+    o2.y = B.surface_sub_y(o2.x)
+    o2.intent = None
+    result = Match.resolve_turn([w2, o2], 0)
+
+    kinds = [e["t"] for e in result.events]
+    assert "falldamage" in kinds, f"낙하 피해 이벤트가 없다: {kinds}"
+    assert w2.hp < 100, f"이동 낙하가 아프지 않다: hp {w2.hp}"
+    # 귀속 대상이 없다 — 아무도 골드를 못 받는다
+    fall_ev = next(e for e in result.events if e["t"] == "falldamage")
+    assert fall_ev["by"] is None, f"자발적 낙하에 귀속이 붙었다: {fall_ev['by']}"
+    assert o2.gold == Match.RULES.start_gold, "남이 골드를 챙겼다"
+
+
+def test_parachute_saves_a_walked_fall_too() -> None:
+    """낙하산은 원인을 가리지 않는다 — 걸어 내려간 낙하에도 발동한다."""
+    _cliff()
+    p = Match.make_player(0, "A", False, 460 * B.CELL_SUBPX)
+    p.y = B.surface_sub_y(p.x)
+    p.items.fuel = 3
+    p.items.parachute = 1
+    p.intent = Match.Intent(angle10=450, power=500, weapon_id=0, move_dx=28, use_shield=False)
+    o = Match.make_player(1, "B", False, 100 * B.CELL_SUBPX)
+    o.y = B.surface_sub_y(o.x)
+    o.intent = None
+
+    result = Match.resolve_turn([p, o], 0)
+    kinds = [e["t"] for e in result.events]
+    assert "parachute" in kinds, f"낙하산이 안 폈다: {kinds}"
+    assert p.hp == 100, f"낙하산을 쓰고도 아팠다: hp {p.hp}"
+    assert p.items.parachute == 0, "낙하산이 소모되지 않았다"
+
+
+def test_burial_always_has_an_exit() -> None:
+    """매몰 판정을 받는 상태는 반드시 밀어올려진다 (`decisions.md` B13).
+
+    임계가 갈라져 있으면(판정 800‰ · 밀어올리기 1000‰) 그 사이 구간에 갇혀
+    턴당 지속 피해로 확정사한다. 실측 875‰ 고착이 그 상태였다.
+    """
+    import numpy as np
+
+    T.CFG.seed = 1
+    T.reset_gate_cache()
+    T.grid.fill(T.EMPTY)
+    g2 = T.grid.reshape(T.H, T.W)
+    g2[300:522, :] = T.SOIL
+    g2[522:, :] = T.BEDROCK
+    T.connectivity()
+    T.mark_all()
+    T.set_step(0)
+
+    p = Match.make_player(0, "A", False, 400 * B.CELL_SUBPX)
+    p.y = B.surface_sub_y(p.x)
+    top = p.y >> B.CELL_SHIFT
+    g2[top - 7 : top, 388:412] = T.SOIL  # 탱크를 흙에 파묻는다
+
+    before = B.buried_fraction(p)
+    assert before >= B.CFG.burial_permille, f"시나리오가 약하다: {before}‰"
+    assert before < 1000, f"1000‰ 이면 옛 임계로도 풀린다 — 검사 의미가 없다: {before}‰"
+
+    B.reseat_tank(p)
+    after = B.buried_fraction(p)
+    assert after < B.CFG.burial_permille, (
+        f"매몰이 안 풀렸다: {before}‰ → {after}‰ (임계 {B.CFG.burial_permille}‰) — "
+        "밀어올리기 임계가 매몰 판정과 다르면 그 사이 구간이 확정사가 된다"
+    )

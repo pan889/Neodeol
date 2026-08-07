@@ -225,7 +225,7 @@ export function reseatTank(tank) {
         tank.y += CELL_SUBPX;
     }
     guard = 0;
-    while(guard++ < H * 2 && buriedFraction(tank) >= 1000)tank.y -= CELL_SUBPX;
+    while(guard++ < H * 2 && buriedFraction(tank) >= CFG.burialPermille)tank.y -= CELL_SUBPX;
     const fallPx = tank.y - startY >> PX_SHIFT;
     return fallPx > 0 ? fallPx : 0;
 }

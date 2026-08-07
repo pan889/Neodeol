@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 5;
+export const MATCH_VERSION = 6;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {
@@ -233,8 +233,45 @@ export function setIntent(player: Player, candidate: Intent | null): Intent {
   return intent;
 }
 
-export function applyMove(player: Player, dxCells: number): number {
-  if (!player.alive || dxCells === 0) return 0;
+/**
+ * 재배치가 낸 낙하를 피해로 바꾼다. `applyMove` 와 `applyPhase` 가 **공유한다.**
+ *
+ * **떨어지면 원인과 무관하게 아프다.** 예전에는 `applyMove` 가 `reseatTank()` 의
+ * 반환값을 버려서, 연료로 절벽을 걸어 내려가면 무피해였다 — 같은 600 px 낙차를
+ * 지형 붕괴로 떨어지면 288 피해로 즉사인데. 300골드 연료가 사실상 무제한 낙하 무효
+ * 아이템이었다.
+ *
+ * 두 호출부가 각자 계산하면 낙하산 소모·격자 이탈·이벤트 형식이 갈라진다.
+ * 한 군데서만 판정한다.
+ */
+function applyFall(
+  players: Player[],
+  player: Player,
+  fall: number,
+  owner: number | null,
+): MatchEvent[] {
+  const events: MatchEvent[] = [];
+  if (fall < 0) {
+    player.hp = 0;
+    events.push({ t: "outofmap", slot: player.slot });
+    return events;
+  }
+  if (fall === 0) return events;
+  const damage = B.fallDamage(fall);
+  if (damage <= 0) return events;
+  if (player.items.parachute > 0) {
+    player.items.parachute--;
+    events.push({ t: "parachute", slot: player.slot, fallPx: fall });
+    return events;
+  }
+  player.hp -= damage;
+  creditDamage(players, owner, damage);
+  events.push({ t: "falldamage", slot: player.slot, fallPx: fall, dmg: damage, by: owner });
+  return events;
+}
+
+export function applyMove(player: Player, dxCells: number): { moved: number; fall: number } {
+  if (!player.alive || dxCells === 0) return { moved: 0, fall: 0 };
   const budget = player.items.fuel * RULES.fuelCellsPerUnit;
   let wanted = dxCells < 0 ? -dxCells : dxCells;
   if (wanted > budget) wanted = budget;
@@ -249,12 +286,13 @@ export function applyMove(player: Player, dxCells: number): number {
     player.x = nextX;
     moved++;
   }
+  let fall = 0;
   if (moved > 0) {
     const used = floorDiv(moved + RULES.fuelCellsPerUnit - 1, RULES.fuelCellsPerUnit);
     player.items.fuel = player.items.fuel > used ? player.items.fuel - used : 0;
-    B.reseatTank(player);
+    fall = B.reseatTank(player);
   }
-  return moved;
+  return { moved, fall };
 }
 
 export function resolveTurn(players: Player[], wind: number): ResolveTurnResult {
@@ -265,8 +303,19 @@ export function resolveTurn(players: Player[], wind: number): ResolveTurnResult 
 
   for (const player of players) {
     if (!player.alive || player.intent === null) continue;
-    const moved = applyMove(player, player.intent.moveDx);
-    if (moved > 0) events.push({ t: "move", slot: player.slot, cells: moved });
+    const { moved, fall } = applyMove(player, player.intent.moveDx);
+    if (moved > 0) {
+      events.push({ t: "move", slot: player.slot, cells: moved });
+      /* 스스로 걸어 내려간 낙하다 — 유발한 발사가 없으므로 귀속 대상도 없다
+         (이 시점에는 이번 턴의 폭발이 아직 하나도 없다). */
+      events.push(...applyFall(players, player, fall, null));
+      if (player.hp <= 0) {
+        player.hp = 0;
+        player.alive = false;
+        events.push({ t: "dead", slot: player.slot, by: null });
+        continue;
+      }
+    }
     player.shieldUp = player.intent.useShield && player.items.shield > 0;
     if (player.shieldUp) {
       player.items.shield--;
@@ -412,21 +461,7 @@ export function applyPhase(players: Player[], lastBlastOwner: number | null): Ma
   const events: MatchEvent[] = [];
   for (const player of players) {
     if (!player.alive) continue;
-    const fall = B.reseatTank(player);
-    if (fall < 0) {
-      player.hp = 0;
-      events.push({ t: "outofmap", slot: player.slot });
-    } else if (fall > 0) {
-      const damage = B.fallDamage(fall);
-      if (damage > 0 && player.items.parachute > 0) {
-        player.items.parachute--;
-        events.push({ t: "parachute", slot: player.slot, fallPx: fall });
-      } else if (damage > 0) {
-        player.hp -= damage;
-        creditDamage(players, lastBlastOwner, damage);
-        events.push({ t: "falldamage", slot: player.slot, fallPx: fall, dmg: damage, by: lastBlastOwner });
-      }
-    }
+    events.push(...applyFall(players, player, B.reseatTank(player), lastBlastOwner));
 
     const buriedFraction = B.buriedFraction(player);
     const wasBuried = player.buried;

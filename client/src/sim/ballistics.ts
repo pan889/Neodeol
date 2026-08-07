@@ -361,9 +361,12 @@ export function reseatTank(tank: Tank): number {
     if (supported(tank)) break;
     tank.y += CELL_SUBPX;
   }
-  /* 발밑이 솟아올랐으면 밀어올린다 */
+  /* 발밑이 솟아올랐으면 밀어올린다.
+     임계는 **매몰 판정과 같은 값**이다 (`decisions.md` B13). 예전에는 1000‰ 에서만
+     밀어올려서, 800~999‰ 에 안착하면 탈출 경로가 원리적으로 없었다 —
+     턴당 6 피해로 약 17턴 확정사였다. */
   guard = 0;
-  while (guard++ < H * 2 && buriedFraction(tank) >= 1000) tank.y -= CELL_SUBPX;
+  while (guard++ < H * 2 && buriedFraction(tank) >= CFG.burialPermille) tank.y -= CELL_SUBPX;
   const fallPx = (tank.y - startY) >> PX_SHIFT;
   return fallPx > 0 ? fallPx : 0;
 }

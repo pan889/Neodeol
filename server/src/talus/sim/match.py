@@ -272,9 +272,55 @@ def set_intent(player: Player, candidate: Intent | None) -> Intent:
     return intent
 
 
-def apply_move(player: Player, dx_cells: int) -> int:
+def _apply_fall(
+    players: list[Player], player: Player, fall: int, owner: int | None
+) -> list[MatchEvent]:
+    """재배치가 낸 낙하를 피해로 바꾼다. `apply_move` 와 `apply_phase` 가 **공유한다.**
+
+    **떨어지면 원인과 무관하게 아프다.** 예전에는 `apply_move` 가 `reseat_tank()` 의
+    반환값을 버려서, 연료로 절벽을 걸어 내려가면 무피해였다 — 같은 600 px 낙차를
+    지형 붕괴로 떨어지면 288 피해로 즉사인데. 300골드 연료가 사실상 무제한 낙하 무효
+    아이템이었다.
+
+    두 호출부가 각자 계산하면 낙하산 소모·격자 이탈·이벤트 형식이 갈라진다.
+    한 군데서만 판정한다.
+    """
+    events: list[MatchEvent] = []
+    if fall < 0:
+        player.hp = 0
+        events.append({"t": "outofmap", "slot": player.slot})
+        return events
+    if fall == 0:
+        return events
+    damage = B.fall_damage(fall)
+    if damage <= 0:
+        return events
+    if player.items.parachute > 0:
+        player.items.parachute -= 1
+        events.append({"t": "parachute", "slot": player.slot, "fallPx": fall})
+        return events
+    player.hp -= damage
+    _credit_damage(players, owner, damage)
+    events.append(
+        {
+            "t": "falldamage",
+            "slot": player.slot,
+            "fallPx": fall,
+            "dmg": damage,
+            "by": owner,
+        }
+    )
+    return events
+
+
+def apply_move(player: Player, dx_cells: int) -> tuple[int, int]:
+    """연료로 좌우 이동. 반환은 `(이동 셀 수, 낙하 픽셀)`.
+
+    **낙하 픽셀을 반드시 호출자에게 넘긴다.** 예전에는 여기서 `reseat_tank()` 를 부르고
+    반환값을 버렸고, 그래서 절벽을 걸어 내려가면 낙하 피해가 0 이었다 (`match.md` §5.1).
+    """
     if not player.alive or dx_cells == 0:
-        return 0
+        return 0, 0
     budget = player.items.fuel * RULES.fuel_cells_per_unit
     wanted = -dx_cells if dx_cells < 0 else dx_cells
     if wanted > budget:
@@ -291,11 +337,12 @@ def apply_move(player: Player, dx_cells: int) -> int:
             break
         player.x = next_x
         moved += 1
+    fall = 0
     if moved > 0:
         used = floor_div(moved + RULES.fuel_cells_per_unit - 1, RULES.fuel_cells_per_unit)
         player.items.fuel = player.items.fuel - used if player.items.fuel > used else 0
-        B.reseat_tank(player)
-    return moved
+        fall = B.reseat_tank(player)
+    return moved, fall
 
 
 def resolve_turn(players: list[Player], wind: int) -> ResolveTurnResult:
@@ -305,9 +352,17 @@ def resolve_turn(players: list[Player], wind: int) -> ResolveTurnResult:
     for player in players:
         if not player.alive or player.intent is None:
             continue
-        moved = apply_move(player, player.intent.move_dx)
+        moved, fall = apply_move(player, player.intent.move_dx)
         if moved > 0:
             result.events.append({"t": "move", "slot": player.slot, "cells": moved})
+            # 스스로 걸어 내려간 낙하다 — 유발한 발사가 없으므로 귀속 대상도 없다
+            # (이 시점에는 이번 턴의 폭발이 아직 하나도 없다).
+            result.events.extend(_apply_fall(players, player, fall, None))
+            if player.hp <= 0:
+                player.hp = 0
+                player.alive = False
+                result.events.append({"t": "dead", "slot": player.slot, "by": None})
+                continue
         player.shield_up = player.intent.use_shield and player.items.shield > 0
         if player.shield_up:
             player.items.shield -= 1
@@ -465,27 +520,7 @@ def apply_phase(players: list[Player], last_blast_owner: int | None) -> list[Mat
     for player in players:
         if not player.alive:
             continue
-        fall = B.reseat_tank(player)
-        if fall < 0:
-            player.hp = 0
-            events.append({"t": "outofmap", "slot": player.slot})
-        elif fall > 0:
-            damage = B.fall_damage(fall)
-            if damage > 0 and player.items.parachute > 0:
-                player.items.parachute -= 1
-                events.append({"t": "parachute", "slot": player.slot, "fallPx": fall})
-            elif damage > 0:
-                player.hp -= damage
-                _credit_damage(players, last_blast_owner, damage)
-                events.append(
-                    {
-                        "t": "falldamage",
-                        "slot": player.slot,
-                        "fallPx": fall,
-                        "dmg": damage,
-                        "by": last_blast_owner,
-                    }
-                )
+        events.extend(_apply_fall(players, player, B.reseat_tank(player), last_blast_owner))
 
         buried_fraction = B.buried_fraction(player)
         was_buried = player.buried
