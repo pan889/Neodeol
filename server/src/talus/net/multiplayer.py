@@ -8,6 +8,7 @@ from fastapi import APIRouter, Body, HTTPException, Query, Request, WebSocket, W
 from pydantic import BaseModel, Field
 
 from talus import constants
+from talus.sim import rules as Rules
 from talus.net.protocol import ErrorCode, RoomError, pack_message, unpack_message
 from talus.room.service import Room, RoomManager, Seat
 
@@ -54,6 +55,7 @@ def _join_response(room: Room, seat: Seat) -> dict[str, object]:
         "slot": seat.slot,
         "protocolVersion": constants.PROTOCOL_VERSION,
         "simVersion": constants.SIM_VERSION,
+        "ruleHash": Rules.RULE_HASH,
         "wsPath": f"/ws/rooms/{room.code}",
     }
 
@@ -109,7 +111,7 @@ async def room_socket(
     code: str,
     token: str = Query(...),
     protocol_version: int = Query(..., alias="protocolVersion"),
-    sim_version: str = Query(..., alias="simVersion"),
+    rule_hash: str = Query(..., alias="ruleHash"),
     build_hash: str = Query("dev", alias="buildHash"),
 ) -> None:
     await websocket.accept()
@@ -120,7 +122,7 @@ async def room_socket(
             token,
             websocket,
             protocol_version,
-            sim_version,
+            rule_hash,
             build_hash[:64],
         )
         room = await manager.get_room(code)

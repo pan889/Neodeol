@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from talus import __version__, constants
 from talus.net.multiplayer import router as multiplayer_router
 from talus.room import RoomManager
+from talus.sim import rules as Rules
 from talus.store import check_postgres, check_redis
 
 BOOT_TIME = time.time()
@@ -106,6 +107,7 @@ async def version() -> dict[str, Any]:
         "app_version": __version__,
         "protocol_version": constants.PROTOCOL_VERSION,
         "sim_version": constants.SIM_VERSION,
+        "rule_hash": Rules.RULE_HASH,
         "provisional": sorted(constants.PROVISIONAL),
         "grid": {"w": constants.GRID_W, "h": constants.GRID_H, "cell_px": constants.CELL_PX},
     }

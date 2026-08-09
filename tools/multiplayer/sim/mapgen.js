@@ -90,7 +90,7 @@ function provinceOrder(mapSeed) {
     }
     return order;
 }
-const PROVINCE_BLEND = 48;
+export const PROVINCE_BLEND = 48;
 function provinceAt(mapSeed, x) {
     const count = 4 + (hash32(mapSeed, 0, PROVINCE_SALT, 0) & 1);
     const width = floorDiv(W, count);

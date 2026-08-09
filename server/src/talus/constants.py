@@ -299,4 +299,4 @@ def compute_sim_version() -> str:
 SIM_VERSION: Final = compute_sim_version()
 
 #: 와이어 프로토콜 버전. 메시지 구조가 바뀌면 손으로 올린다 (netcode.md).
-PROTOCOL_VERSION: Final = 2
+PROTOCOL_VERSION: Final = 3

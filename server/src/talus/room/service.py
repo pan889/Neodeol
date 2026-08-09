@@ -17,6 +17,7 @@ from fastapi import WebSocket
 from talus import constants
 from talus.net.protocol import ErrorCode, RoomError, pack_message
 from talus.sim import match as Match
+from talus.sim import rules as Rules
 
 from .simulation import SimulationPool
 
@@ -214,11 +215,20 @@ class RoomManager:
         token: str,
         websocket: WebSocket,
         protocol_version: int,
-        sim_version: str,
+        rule_hash: str,
         build_hash: str,
     ) -> Seat:
-        if protocol_version != constants.PROTOCOL_VERSION or sim_version != constants.SIM_VERSION:
-            raise RoomError(ErrorCode.VERSION_MISMATCH, "프로토콜 또는 시뮬레이션 버전이 다르다")
+        if protocol_version != constants.PROTOCOL_VERSION:
+            raise RoomError(ErrorCode.VERSION_MISMATCH, "프로토콜 버전이 다르다")
+        # 클라이언트가 **자기 규칙 표에서 계산한** 지문이다. 예전에는 `GET /version` 으로
+        # 받은 `simVersion` 을 되돌려 보냈고, 서버가 그걸 자기 값과 비교했다 —
+        # 동어반복이라 원리적으로 불일치가 나지 않았고 규칙이 다른 두 빌드가 같은 방에
+        # 들어갔다. `sim/rules.py` 참조.
+        if rule_hash != Rules.RULE_HASH:
+            raise RoomError(
+                ErrorCode.VERSION_MISMATCH,
+                f"규칙이 다르다 (클라 {rule_hash} · 서버 {Rules.RULE_HASH})",
+            )
         room = await self.get_room(code)
         async with room.lock:
             seat = room.seat_by_token(token)

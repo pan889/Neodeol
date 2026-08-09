@@ -105,7 +105,7 @@ function provinceOrder(mapSeed: number): number[] {
 }
 
 /** 구역 경계가 지층을 수직으로 자르지 않게 섞는 폭 (셀) */
-const PROVINCE_BLEND = 48;
+export const PROVINCE_BLEND = 48;
 
 /** 열 `x` 가 속한 구역과, 경계에서의 이웃·혼합 가중치 */
 function provinceAt(mapSeed: number, x: number): { a: number; b: number; t: number } {

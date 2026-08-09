@@ -736,3 +736,27 @@ def test_shot_replay_exercises_every_weapon() -> None:
         used = {s["w"] for s in header["shots"]}
         missing = {w.id for w in Wp.WEAPONS} - used
         assert not missing, f"{p.stem}: 무기 {sorted(missing)} 이(가) 한 번도 안 나온다"
+
+
+@pytest.mark.crosssim
+def test_rule_hash_matches_typescript() -> None:
+    """TS 와 Python 의 규칙 지문이 같다 (`netcode.md` §5).
+
+    지문은 **양쪽이 각자 계산한다** — 그게 핸드셰이크가 동어반복이 아닌 이유다.
+    대신 두 구현이 같은 수열을 만들어야 하고, 어긋나면 **모든 접속이 거부된다.**
+    안전한 방향이지만 원인이 지문 안에 숨어 찾기 어려우므로 여기서 상시 대조한다.
+
+    골든 헤더에 실린 지문과 비교한다 — 골든은 TS 가 만들기 때문이다.
+    """
+    from talus.sim import rules as Rules
+
+    heads = [_load(p)[0] for p in REPLAYS]
+    carried = {h["ruleHash"] for h in heads if "ruleHash" in h}
+    if not carried:
+        pytest.skip("골든에 ruleHash 가 없다 — gen-golden.mts 를 다시 돌린다")
+    assert len(carried) == 1, f"골든마다 지문이 다르다: {carried}"
+    got = carried.pop()
+    assert got == Rules.RULE_HASH, (
+        f"규칙 지문이 갈라졌다\n  TS(골든) {got}\n  Python    {Rules.RULE_HASH}\n"
+        "  → client/src/sim/rules.ts 와 server/src/talus/sim/rules.py 의 수열을 대조한다"
+    )

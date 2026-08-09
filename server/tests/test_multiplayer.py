@@ -17,7 +17,7 @@ def _socket_path(session: dict[str, object], **overrides: object) -> str:
     query: dict[str, object] = {
         "token": session["token"],
         "protocolVersion": session["protocolVersion"],
-        "simVersion": session["simVersion"],
+        "ruleHash": session["ruleHash"],
         "buildHash": "pytest",
     }
     query.update(overrides)
@@ -71,11 +71,19 @@ def test_room_capacity_and_version_gate() -> None:
             _socket_path(host, protocolVersion=wrong_version)
         ) as socket:
             error = unpack_message(socket.receive_bytes())
-            assert error == {
-                "t": "error",
-                "code": ErrorCode.VERSION_MISMATCH,
-                "msg": "프로토콜 또는 시뮬레이션 버전이 다르다",
-            }
+            assert error["t"] == "error"
+            assert error["code"] == ErrorCode.VERSION_MISMATCH
+            assert "프로토콜" in error["msg"]
+
+        # 프로토콜은 맞는데 **규칙**이 다른 경우. 예전에는 클라가 서버에서 받은 값을
+        # 되돌려 보내서 이 경로가 원리적으로 발화하지 않았다 (§규칙 지문 핸드셰이크).
+        with client.websocket_connect(
+            _socket_path(host, ruleHash="DEADBEEF")
+        ) as socket:
+            error = unpack_message(socket.receive_bytes())
+            assert error["t"] == "error"
+            assert error["code"] == ErrorCode.VERSION_MISMATCH
+            assert "규칙" in error["msg"], f"규칙 불일치가 프로토콜 오류로 보고된다: {error}"
 
 
 def test_two_player_turn_desync_and_reconnect() -> None:
@@ -224,3 +232,92 @@ def test_cancel_tasks_kills_every_task_on_the_room() -> None:
             assert seat.heartbeat_task is None, "좌석 하트비트 참조가 남았다"
 
     asyncio.run(scenario())
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 규칙 지문 핸드셰이크 (netcode.md §7.3)
+#
+# 예전에는 클라이언트가 `GET /version` 으로 받은 `simVersion` 을 접속할 때 그대로
+# 되돌려 보냈고 서버가 그걸 자기 값과 비교했다 — **동어반복이라 원리적으로 불일치가
+# 나지 않았다.** 규칙이 다른 두 빌드가 같은 방에 들어갈 수 있었고, 그러면 desync 가
+# 나기 전까지 아무도 모른다.
+#
+# 지금은 양쪽이 **각자의 규칙 표에서** 지문을 계산한다 (`sim/rules.py`).
+# ══════════════════════════════════════════════════════════════════════════
+
+import dataclasses
+
+import msgpack
+
+from talus.sim import rules as Rules
+
+
+def _open(client, code: str, token: str, *, rule_hash: str, protocol: int) -> dict:
+    url = (
+        f"/ws/rooms/{code}?token={token}"
+        f"&protocolVersion={protocol}&ruleHash={rule_hash}"
+    )
+    with client.websocket_connect(url) as ws:
+        return msgpack.unpackb(ws.receive_bytes(), raw=False)
+
+
+def test_handshake_rejects_a_different_rule_set() -> None:
+    """규칙 지문이 다르면 접속을 거부한다. **이 검사가 실제로 발화해야 한다.**"""
+    from fastapi.testclient import TestClient
+
+    from talus.net.app import app
+
+    with TestClient(app) as client:
+        room = client.post("/api/rooms", json={"name": "host", "maxPlayers": 2}).json()
+        code, token = room["roomCode"], room["token"]
+
+        ok = _open(client, code, token, rule_hash=Rules.RULE_HASH, protocol=3)
+        assert ok["t"] == "hello", f"올바른 지문인데 거부됐다: {ok}"
+
+        bad = _open(client, code, token, rule_hash="DEADBEEF", protocol=3)
+        assert bad["t"] == "error", "지문이 달라도 통과한다 — 검사가 동어반복이다"
+
+        old = _open(client, code, token, rule_hash=Rules.RULE_HASH, protocol=2)
+        assert old["t"] == "error", "옛 프로토콜이 통과한다"
+
+
+def test_rule_hash_is_not_the_server_constants_hash() -> None:
+    """지문과 `SIM_VERSION` 은 **다른 것**이다.
+
+    같아지면 클라이언트가 자기 규칙에서 계산할 수 없게 되고, 그 순간 동어반복으로 돌아간다.
+    `SIM_VERSION` 은 `constants.py` 전체의 SHA-256(Python 전용)이고,
+    지문은 규칙 값만 담은 정수 수열의 FNV-1a(양쪽 계산 가능)다.
+    """
+    from talus import constants
+
+    assert Rules.RULE_HASH != constants.SIM_VERSION
+    assert len(Rules.RULE_HASH) == 8, "지문은 8자리 hex 다"
+    assert Rules.RULE_HASH == Rules.rule_hash(), "호출마다 값이 달라진다"
+
+
+def test_rule_fingerprint_holds_only_integers() -> None:
+    """지문에 정수가 아닌 것이 섞이면 안 된다.
+
+    TS 쪽에서 `undefined` 가 섞이면 `| 0` 이 **조용히 0 으로** 만들어 길이는 맞고 값만
+    달라진다. 실제로 `PROVINCE_BLEND` 를 export 하지 않아 그런 상태가 됐었다.
+    """
+    fingerprint = Rules.rule_fingerprint()
+    assert len(fingerprint) > 100, f"지문이 {len(fingerprint)}개뿐이다"
+    for index, value in enumerate(fingerprint):
+        assert type(value) is int, f"{index}번이 정수가 아니다: {value!r}"
+        assert -(2**31) <= value < 2**31, f"{index}번이 int32 를 벗어났다: {value}"
+
+
+def test_rule_hash_reacts_to_a_balance_change() -> None:
+    """무기 값을 하나만 바꿔도 지문이 바뀐다 — 안 바뀌면 검사가 무의미하다."""
+    from talus.sim import weapons as Wp
+
+    before = Rules.rule_hash()
+    original = Wp.WEAPONS[1]
+    try:
+        Wp.WEAPONS[1] = dataclasses.replace(original, max_damage=original.max_damage + 1)
+        after = Rules.rule_hash()
+    finally:
+        Wp.WEAPONS[1] = original
+    assert before != after, "무기 피해를 바꿨는데 지문이 그대로다"
+    assert Rules.rule_hash() == before, "복원 후 값이 안 돌아왔다"

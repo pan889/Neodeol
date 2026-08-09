@@ -39,6 +39,7 @@ import * as M from "../src/sim/mapgen.ts";
 import * as Match from "../src/sim/match.ts";
 import { loadTrig } from "../src/sim/trig.ts";
 import { fnv1a32, hash32, hex8 } from "../src/sim/intmath.ts";
+import { ruleHash } from "../src/sim/rules.ts";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const OUT = path.join(ROOT, "tests", "replays");
@@ -305,6 +306,7 @@ function writeMatchReplay(): void {
     note: "mapSeed + 시간순 activeSlot intent + purchases 만으로 두 라운드의 매치 상태를 재생한다",
     matchVersion: Match.MATCH_VERSION,
     mapgenVersion: M.MAPGEN_VERSION,
+    ruleHash: ruleHash(),
     /* TS 는 무기·지질 값을 하드코딩하고 Python 은 `constants.py` 에서 읽는다.
        두 사본이 어긋나는 것을 잡는 유일한 지점이 여기다 — 값을 골든에 실어 두면
        Python 재생이 자기 상수와 대조한다 (`test_cross_sim.py`).

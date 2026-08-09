@@ -1,3 +1,5 @@
+import { ruleHash } from "./sim/rules.js";
+
 (function () {
   "use strict";
 
@@ -155,7 +157,7 @@
     const query = new URLSearchParams({
       token: state.session.token,
       protocolVersion: String(state.version.protocol_version),
-      simVersion: state.version.sim_version,
+      ruleHash: ruleHash(),
       buildHash: "phase4-harness",
     });
     const ws = new WebSocket(

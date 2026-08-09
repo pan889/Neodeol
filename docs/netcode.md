@@ -169,21 +169,41 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 한 턴의 `intent`는 `activeSlot` 한 명의 값이므로 배열이 아니다. 슬롯 번호 자체의 정의·할당 주체는
 `decisions.md` B10이다.
 
-**버전 필드는 두 개이고 수명주기가 다르다.**
+**버전 필드는 셋이고 수명주기가 다르다.**
 
-| 필드 | 무엇 | 언제 바뀌나 |
-|---|---|---|
-| `protocolVersion` | 와이어 형식 신원. `constants.PROTOCOL_VERSION` (현재 `2`) | 메시지 구조가 바뀔 때. 손으로 올린다 |
-| `simVersion` | 시뮬레이션 규칙 신원. `constants.SIM_VERSION`. §7.3 | 상수가 하나라도 바뀔 때. 자동 |
+| 필드 | 무엇 | 누가 계산하나 | 언제 바뀌나 |
+|---|---|---|---|
+| `protocolVersion` | 와이어 형식 신원. `constants.PROTOCOL_VERSION` (현재 `3`) | 서버 | 메시지 구조가 바뀔 때. 손으로 올린다 |
+| `ruleHash` | **규칙 지문.** `sim/rules` 의 정수 수열 FNV-1a | **양쪽이 각자** | 규칙 값이 바뀔 때. 자동 |
+| `simVersion` | 서버 상수 전체의 SHA-256. `constants.SIM_VERSION` | 서버만 | 상수가 하나라도 바뀔 때. 자동 |
 
-메시지 구조만 바뀐 릴리스에서 `simVersion` 이 흔들려선 안 되고, 상수만 바뀐 릴리스에서
-`protocolVersion` 이 그대로여야 한다. `server/src/talus/constants.py` 가 이 분리를 이미 구현하고 있다
-(`_EXCLUDED_FROM_HASH` 가 `PROTOCOL_VERSION` 을 해시에서 뺀다).
+**핸드셰이크가 검사하는 것은 `ruleHash` 다.**
+
+> ⚠ **`simVersion` 으로 검사하면 안 된다 — 한동안 그렇게 하다 구멍이 났다.**
+> `SIM_VERSION` 은 `constants.py` 전체의 해시라 **Python 만 계산할 수 있다.** 그래서
+> 클라이언트는 `GET /version` 으로 받아 접속할 때 되돌려 보냈고, 서버는 그걸 자기 값과
+> 비교했다 — 동어반복이라 **원리적으로 불일치가 나지 않았고**, 규칙이 다른 두 빌드가
+> 같은 방에 들어갈 수 있었다. desync 가 나기 전까지 아무도 모른다.
+>
+> `ruleHash` 는 다르다. 양쪽이 **각자의 규칙 표에서** 계산하므로 값이 갈라져 있으면
+> 지문이 갈라진다. `client/src/sim/rules.ts` 와 `server/src/talus/sim/rules.py` 가
+> 같은 정수 수열을 만들고, 그 일치는 `test_rule_hash_matches_typescript` 가 지킨다.
+
+`simVersion` 은 남겨 둔다 — 서버 빌드 식별과 `/version` 표시에 쓰고, `constants.py` 를
+만졌는데 지문이 안 바뀌는 경우(표현 상수만 바뀜)를 구분할 수 있다.
+
+메시지 구조만 바뀐 릴리스에서 `ruleHash` 가 흔들려선 안 되고, 규칙만 바뀐 릴리스에서
+`protocolVersion` 이 그대로여야 한다. `_EXCLUDED_FROM_HASH` 가 `PROTOCOL_VERSION` 을
+`SIM_VERSION` 해시에서 빼는 것이 같은 분리다.
+
+**지문에 무엇이 들어가는가.** 시뮬레이션 결과를 바꾸는 값 전부 — 무기 수치, 지질
+프로파일, 매치 규칙, 탄도 상수, 자동자 확률·저항. **빠지는 것**은 무기 이름·설명 같은
+표현 텍스트와 `SUBSTEPS` 같은 표현 상수다. 이름을 번역했다고 같은 방에 못 들어가면 곤란하다.
 
 ### 5.1 클라이언트 → 서버
 
 WebSocket 경로는 `/ws/rooms/{roomCode}`다. 업그레이드 쿼리에 `token`, `protocolVersion`,
-`simVersion`, `buildHash`를 보낸다. 개발 로비의 token은 256비트 불투명 문자열이며 매치 시작 뒤에도
+`ruleHash`, `buildHash`를 보낸다. 개발 로비의 token은 256비트 불투명 문자열이며 매치 시작 뒤에도
 같은 슬롯으로 재접속하는 키다.
 
 | `t` | 필드 | 타입·폭 | 단위·범위 | 설명 |

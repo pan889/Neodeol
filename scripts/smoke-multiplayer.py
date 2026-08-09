@@ -33,7 +33,7 @@ def socket_url(session: dict[str, object]) -> str:
         {
             "token": session["token"],
             "protocolVersion": session["protocolVersion"],
-            "simVersion": session["simVersion"],
+            "ruleHash": session["ruleHash"],
             "buildHash": "docker-smoke",
         }
     )

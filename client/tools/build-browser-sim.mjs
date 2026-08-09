@@ -14,6 +14,7 @@ const files = [
   "weapons.ts",
   "mapgen.ts",
   "match.ts",
+  "rules.ts",
 ];
 
 function build(name) {

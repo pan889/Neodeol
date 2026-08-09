@@ -1,3 +1,5 @@
+import { ruleHash } from "./sim/rules.js";
+
 const ACTIVE_SESSION_KEY = "talus.multiplayer.active.v1";
 const SAVED_SESSIONS_KEY = "talus.multiplayer.sessions.v1";
 
@@ -69,7 +71,9 @@ export class RoomSocket {
     const query = new URLSearchParams({
       token: this.session.token,
       protocolVersion: String(this.version.protocol_version),
-      simVersion: this.version.sim_version,
+      // **자기 규칙 표에서 계산한다.** 예전에는 `GET /version` 으로 받은 값을 그대로
+      // 되돌려 보내서 서버 검사가 동어반복이었다 — 규칙이 다른 빌드도 통과했다.
+      ruleHash: ruleHash(),
       buildHash: this.buildHash,
     });
     const socket = new WebSocket(
