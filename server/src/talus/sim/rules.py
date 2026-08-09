@@ -127,6 +127,7 @@ def rule_fingerprint() -> list[int]:
         B.CFG.fall_damage_shift,
         B.CFG.burial_permille,
         B.CFG.burial_damage,
+        B.CFG.burial_relief_cells,
     ]
 
     # 7. 자동자. `seed` 는 매치마다 달라지므로 넣지 않는다

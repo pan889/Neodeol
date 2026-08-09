@@ -43,6 +43,7 @@ export interface BallisticsConfig {
   fallDamageShift: number;
   burialPermille: number;
   burialDamage: number;
+  burialReliefCells: number;
 }
 
 export const CFG: BallisticsConfig = {
@@ -58,6 +59,7 @@ export const CFG: BallisticsConfig = {
   fallDamageShift: 1,
   burialPermille: 800,
   burialDamage: 6,
+  burialReliefCells: 1,
 };
 
 /* ── 셀 조회. 격자 밖 규칙은 `terrain.md` §1.1 ─────────────────────────── */
@@ -365,8 +367,16 @@ export function reseatTank(tank: Tank): number {
      임계는 **매몰 판정과 같은 값**이다 (`decisions.md` B13). 예전에는 1000‰ 에서만
      밀어올려서, 800~999‰ 에 안착하면 탈출 경로가 원리적으로 없었다 —
      턴당 6 피해로 약 17턴 확정사였다. */
-  guard = 0;
-  while (guard++ < H * 2 && buriedFraction(tank) >= CFG.burialPermille) tank.y -= CELL_SUBPX;
+  /* **한 번에 다 빼내지 않는다.** 임계 밑까지 즉시 올리면 `applyPhase` 가 매 턴 reseat 를
+     먼저 부르므로 `player.buried` 가 참이 될 수 없고, 매몰이 게임에서 사라진다
+     (실제로 그렇게 만들었다가 되돌렸다). 턴당 `BURIAL_RELIEF_CELLS` 만큼만 올려서
+     몇 턴 묻혀 있다가 기어나오게 한다 — 영구도 아니고 무효도 아니다.
+     실측: 875‰ 는 1턴, 1000‰ 는 4턴(누적 24 피해). */
+  let relief = 0;
+  while (relief < CFG.burialReliefCells && buriedFraction(tank) >= CFG.burialPermille) {
+    relief++;
+    tank.y -= CELL_SUBPX;
+  }
   const fallPx = (tank.y - startY) >> PX_SHIFT;
   return fallPx > 0 ? fallPx : 0;
 }

@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 7;
+export const MATCH_VERSION = 8;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {
@@ -54,6 +54,10 @@ export interface Player extends B.Tank {
   damageDone: number;
   intent: Intent | null;
   shieldUp: boolean;
+  /** 이 플레이어를 묻은 폭발의 소유자. 매몰이 풀리면 `null` 로 돌아간다.
+   *  매몰은 **과거 턴에 생긴 지속 상태**라 귀속도 그때 정해진다 — 매 턴 발사자로
+   *  갈아끼우면 남이 묻어놓은 적 쪽으로 아무 데나 쏘기만 해도 피해·킬을 가져간다. */
+  buriedBy: number | null;
 }
 
 export interface PlayerSpec {
@@ -173,6 +177,7 @@ export function makePlayer(slot: number, name: string, isAI: boolean, xSub: numb
     damageDone: 0,
     intent: null,
     shieldUp: false,
+    buriedBy: null,
   };
 }
 
@@ -401,13 +406,20 @@ export function applyDetonations(players: Player[], source: OwnedDetonation[]): 
   for (const damage of pending) {
     const player = players[damage.idx];
     if (!player.alive) continue;
+    /* 피해 0 인 히트는 차폐막을 소모하지 않는다. 반경 경계 부근은 정수 시프트 때문에
+       `dmg = 0` 이 나오는데(반경 1024 무기의 1020~1023), 그걸로 600G 아이템이
+       벗겨지면 **일부러 끄트머리에 떨어뜨리는 것이 공짜 해제**가 된다. */
+    if (damage.dmg <= 0) continue;
     if (player.shieldUp) {
       player.shieldUp = false;
       events.push({ t: "blocked", slot: player.slot });
       continue;
     }
+    /* **실제 깎인 만큼만 정산한다.** 계산상 피해 전량을 주면 빈사 상태 적에게 큰
+       무기를 맞혔을 때 기여의 수십 배를 받는다 (남은 HP 3 에 핵포탄 → 960G). */
+    const dealt = damage.dmg < player.hp ? damage.dmg : player.hp;
     player.hp -= damage.dmg;
-    creditDamage(players, damage.owner, damage.dmg);
+    creditDamage(players, damage.owner, dealt);
     events.push({
       t: "damage",
       slot: player.slot,
@@ -462,32 +474,58 @@ export function applyPhase(players: Player[], lastBlastOwner: number | null): Ma
   for (const player of players) {
     if (!player.alive) continue;
     events.push(...applyFall(players, player, B.reseatTank(player), lastBlastOwner));
+    /* 사망 귀속은 **마지막 타격을 넣은 쪽**이다. 낙하는 그 턴의 발사자,
+       매몰은 묻은 사람이다 — 둘이 다를 수 있어서 따로 따라간다. */
+    let killer = lastBlastOwner;
 
     const buriedFraction = B.buriedFraction(player);
     const wasBuried = player.buried;
     player.buried = buriedFraction >= B.CFG.burialPermille;
     if (player.buried) {
+      /* **묻은 사람에게 귀속한다.** 매몰은 과거 턴에 생긴 지속 상태이므로 귀속도
+         묻힌 그 순간에 정해진다. 매 턴 발사자로 갈아끼우면 남이 묻어놓은 적 쪽으로
+         아무 데나 쏘기만 해도 턴당 피해와 처치 크레딧을 가져간다. */
+      if (!wasBuried) player.buriedBy = lastBlastOwner;
+      const owner = player.buriedBy;
+      const dealt = B.CFG.burialDamage < player.hp ? B.CFG.burialDamage : player.hp;
+      const hpBeforeBurial = player.hp;
       player.hp -= B.CFG.burialDamage;
-      creditDamage(players, lastBlastOwner, B.CFG.burialDamage);
+      creditDamage(players, owner, dealt);
+      if (hpBeforeBurial > 0 && player.hp <= 0) killer = owner;
       events.push({
         t: "buried",
         slot: player.slot,
         pct: floorDiv(buriedFraction, 10),
         dmg: B.CFG.burialDamage,
-        by: lastBlastOwner,
+        by: owner,
       });
-    } else if (wasBuried) {
-      events.push({ t: "unburied", slot: player.slot });
+    } else {
+      player.buriedBy = null;
+      if (wasBuried) events.push({ t: "unburied", slot: player.slot });
     }
 
     if (player.hp <= 0) {
       player.hp = 0;
       player.alive = false;
-      events.push({ t: "dead", slot: player.slot, by: lastBlastOwner });
-      creditKill(players, lastBlastOwner, player.slot);
+      events.push({ t: "dead", slot: player.slot, by: killer });
+      creditKill(players, killer, player.slot);
     }
   }
   return events;
+}
+
+/**
+ * 플레이어 수로 나누어떨어지는 턴 상한.
+ *
+ * `roundTurnCap` 은 **개별 발사 횟수** 40 인데 3인·6인으로 안 나뉜다. 그대로 두면
+ * 캡으로 끝난 라운드에서 앞쪽 슬롯이 한 발을 더 쏘고, 그 라운드의 승자는 HP 로
+ * 정해지므로 슬롯 번호가 그대로 유불리가 된다. 내림해서 균등하게 만든다.
+ *
+ *     2인 40 · 3인 39 · 4인 40 · 5인 40 · 6인 36
+ */
+export function effectiveTurnCap(playerCount: number): number {
+  const cap = RULES.roundTurnCap;
+  return playerCount > 0 ? cap - (cap % playerCount) : cap;
 }
 
 export function roundOutcome(players: Player[], roundTurn: number): RoundOutcome {
@@ -500,7 +538,7 @@ export function roundOutcome(players: Player[], roundTurn: number): RoundOutcome
       winner: alive.length === 1 ? alive[0].slot : null,
     };
   }
-  if (roundTurn >= RULES.roundTurnCap) {
+  if (roundTurn >= effectiveTurnCap(players.length)) {
     let bestHp = alive[0].hp;
     for (let i = 1; i < alive.length; i++) if (alive[i].hp > bestHp) bestHp = alive[i].hp;
     const leaders = alive.filter((player) => player.hp === bestHp);
@@ -550,6 +588,7 @@ export function beginRound(players: Player[], spawnCells: number[], rotation: nu
     player.hp = B.MAX_HP;
     player.alive = true;
     player.buried = false;
+    player.buriedBy = null;
     player.shieldUp = false;
     player.intent = null;
     player.x = spawnCells[(i + shift) % players.length] * B.CELL_SUBPX;

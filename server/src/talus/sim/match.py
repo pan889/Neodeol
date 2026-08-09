@@ -66,6 +66,10 @@ class Player(B.Tank):
     damage_done: int = 0
     intent: Intent | None = None
     shield_up: bool = False
+    #: 이 플레이어를 묻은 폭발의 소유자. 매몰이 풀리면 `None` 으로 돌아간다.
+    #: 매몰은 **과거 턴에 생긴 지속 상태**라 귀속도 그때 정해진다 — 매 턴 발사자로
+    #: 갈아끼우면 남이 묻어놓은 적 쪽으로 아무 데나 쏘기만 해도 피해·킬을 가져간다.
+    buried_by: int | None = None
 
 
 @dataclass(frozen=True)
@@ -451,12 +455,20 @@ def apply_detonations(
         player = players[index]
         if not player.alive:
             continue
+        # 피해 0 인 히트는 차폐막을 소모하지 않는다. 반경 경계 부근은 정수 시프트 때문에
+        # `dmg = 0` 이 나오는데(반경 1024 무기의 1020~1023), 그걸로 600G 아이템이
+        # 벗겨지면 **일부러 끄트머리에 떨어뜨리는 것이 공짜 해제**가 된다.
+        if damage <= 0:
+            continue
         if player.shield_up:
             player.shield_up = False
             events.append({"t": "blocked", "slot": player.slot})
             continue
+        # **실제 깎인 만큼만 정산한다.** 계산상 피해 전량을 주면 빈사 상태 적에게 큰
+        # 무기를 맞혔을 때 기여의 수십 배를 받는다 (남은 HP 3 에 핵포탄 → 960G).
+        dealt = damage if damage < player.hp else player.hp
         player.hp -= damage
-        _credit_damage(players, owner, damage)
+        _credit_damage(players, owner, dealt)
         events.append(
             {
                 "t": "damage",
@@ -521,31 +533,65 @@ def apply_phase(players: list[Player], last_blast_owner: int | None) -> list[Mat
         if not player.alive:
             continue
         events.extend(_apply_fall(players, player, B.reseat_tank(player), last_blast_owner))
+        # 사망 귀속은 **마지막 타격을 넣은 쪽**이다. 낙하는 그 턴의 발사자,
+        # 매몰은 묻은 사람이다 — 둘이 다를 수 있어서 따로 따라간다.
+        killer = last_blast_owner
 
         buried_fraction = B.buried_fraction(player)
         was_buried = player.buried
         player.buried = buried_fraction >= B.CFG.burial_permille
         if player.buried:
+            # **묻은 사람에게 귀속한다.** 매몰은 과거 턴에 생긴 지속 상태이므로 귀속도
+            # 묻힌 그 순간에 정해진다. 매 턴 발사자로 갈아끼우면 남이 묻어놓은 적 쪽으로
+            # 아무 데나 쏘기만 해도 턴당 피해와 처치 크레딧을 가져간다.
+            if not was_buried:
+                player.buried_by = last_blast_owner
+            owner = player.buried_by
+            dealt = (
+                B.CFG.burial_damage if B.CFG.burial_damage < player.hp else player.hp
+            )
+            hp_before_burial = player.hp
             player.hp -= B.CFG.burial_damage
-            _credit_damage(players, last_blast_owner, B.CFG.burial_damage)
+            _credit_damage(players, owner, dealt)
+            if hp_before_burial > 0 and player.hp <= 0:
+                killer = owner
             events.append(
                 {
                     "t": "buried",
                     "slot": player.slot,
                     "pct": floor_div(buried_fraction, 10),
                     "dmg": B.CFG.burial_damage,
-                    "by": last_blast_owner,
+                    "by": owner,
                 }
             )
-        elif was_buried:
-            events.append({"t": "unburied", "slot": player.slot})
+        else:
+            player.buried_by = None
+            if was_buried:
+                events.append({"t": "unburied", "slot": player.slot})
 
         if player.hp <= 0:
             player.hp = 0
             player.alive = False
-            events.append({"t": "dead", "slot": player.slot, "by": last_blast_owner})
-            _credit_kill(players, last_blast_owner, player.slot)
+            events.append({"t": "dead", "slot": player.slot, "by": killer})
+            _credit_kill(players, killer, player.slot)
     return events
+
+
+def effective_turn_cap(player_count: int) -> int:
+    """플레이어 수로 나누어떨어지는 턴 상한.
+
+    `ROUND_TURN_CAP` 은 **개별 발사 횟수** 40 인데 3인·6인으로 안 나뉜다. 그대로 두면
+    캡으로 끝난 라운드에서 앞쪽 슬롯이 한 발을 더 쏘고, 그 라운드의 승자는 HP 로 정해지므로
+    (`round_outcome`) 슬롯 번호가 그대로 유불리가 된다. 내림해서 균등하게 만든다.
+
+        2인 40 · 3인 39 · 4인 40 · 5인 40 · 6인 36
+
+    라운드 선공(`(roundNo - 1) % playerCount`)의 편차는 5라운드가 6인으로 안 나뉘어
+    남지만, 그건 라운드 수를 인원마다 바꿔야 해서 매치 길이가 들쭉날쭉해진다.
+    `decisions.md` B7.
+    """
+    cap = RULES.round_turn_cap
+    return cap - (cap % player_count) if player_count > 0 else cap
 
 
 def round_outcome(players: list[Player], round_turn: int) -> RoundOutcome:
@@ -557,7 +603,7 @@ def round_outcome(players: list[Player], round_turn: int) -> RoundOutcome:
             reason="last" if len(alive) == 1 else "wipe",
             winner=alive[0].slot if len(alive) == 1 else None,
         )
-    if round_turn >= RULES.round_turn_cap * 1000:
+    if round_turn >= effective_turn_cap(len(players)):
         best_hp = alive[0].hp
         for player in alive[1:]:
             if player.hp > best_hp:
@@ -607,6 +653,7 @@ def begin_round(players: list[Player], spawn_cells: list[int], rotation: int) ->
         player.hp = B.MAX_HP
         player.alive = True
         player.buried = False
+        player.buried_by = None
         player.shield_up = False
         player.intent = None
         player.x = spawn_cells[(index + shift) % len(players)] * B.CELL_SUBPX

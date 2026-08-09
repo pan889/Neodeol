@@ -2,6 +2,7 @@
 
 from talus.sim import ballistics as B
 from talus.sim import match as Match
+from talus.sim import weapons as Wp
 
 
 def test_turn_wind_changes_gradually_and_varies() -> None:
@@ -250,9 +251,145 @@ def test_burial_always_has_an_exit() -> None:
     assert before >= B.CFG.burial_permille, f"시나리오가 약하다: {before}‰"
     assert before < 1000, f"1000‰ 이면 옛 임계로도 풀린다 — 검사 의미가 없다: {before}‰"
 
-    B.reseat_tank(p)
+    # **한 번에 다 빼내지는 않는다.** 즉시 임계 밑으로 올리면 `apply_phase` 가 매 턴
+    # reseat 를 먼저 부르므로 `player.buried` 가 참이 될 수 없고 매몰이 사라진다.
+    # 여기서 볼 것은 "즉시 탈출"이 아니라 **유한 턴 안에 반드시 풀리는가** 다.
+    turns = 0
+    while B.buried_fraction(p) >= B.CFG.burial_permille and turns < 20:
+        B.reseat_tank(p)
+        turns += 1
     after = B.buried_fraction(p)
     assert after < B.CFG.burial_permille, (
-        f"매몰이 안 풀렸다: {before}‰ → {after}‰ (임계 {B.CFG.burial_permille}‰) — "
-        "밀어올리기 임계가 매몰 판정과 다르면 그 사이 구간이 확정사가 된다"
+        f"매몰이 {turns}턴에도 안 풀렸다: {before}‰ → {after}‰ — "
+        "밀어올리기가 진행하지 않으면 확정사가 된다"
     )
+    assert 0 < turns <= 8, f"탈출에 {turns}턴 걸렸다 (1~8 이 정상)"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 턴 상한 · 귀속 · 오버킬 · 차폐막  (decisions.md B7 · C10)
+#
+# 턴 상한 분기는 **죽은 코드였고 그 안에 실제 이탈이 숨어 있었다** —
+# Python 은 `round_turn_cap * 1000`, TS 는 `roundTurnCap` 을 썼다. 턴 40 에서
+# TS 는 라운드를 끝내고 Python 은 계속 갔다. match 골든이 턴 11 까지만 가서
+# 교차 검증이 못 잡았다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _players(count: int) -> list[Match.Player]:
+    return [
+        Match.make_player(slot, chr(65 + slot), False, (160 + slot * 200) * B.CELL_SUBPX)
+        for slot in range(count)
+    ]
+
+
+def test_turn_cap_divides_evenly_by_player_count() -> None:
+    """턴 상한이 인원수로 나누어떨어진다 — 안 그러면 앞 슬롯이 한 발 더 쏜다."""
+    for count in range(2, 7):
+        cap = Match.effective_turn_cap(count)
+        assert cap % count == 0, f"{count}인 상한 {cap} 이 안 나뉜다"
+        assert cap <= Match.RULES.round_turn_cap
+        assert cap > Match.RULES.round_turn_cap - count, f"{count}인에서 너무 많이 깎였다"
+
+
+def test_turn_cap_actually_ends_the_round() -> None:
+    """상한에 닿으면 라운드가 **실제로** 끝난다.
+
+    `* 1000` 이 들어가 있던 시절에는 40,000 턴까지 안 끝났다. 그 분기를 밟는 테스트가
+    없어서 아무도 몰랐다.
+    """
+    players = _players(2)
+    cap = Match.effective_turn_cap(2)
+    assert not Match.round_outcome(players, cap - 1).over, "상한 직전에 끝났다"
+    outcome = Match.round_outcome(players, cap)
+    assert outcome.over and outcome.reason == "turncap", f"상한에서 안 끝났다: {outcome}"
+
+
+def test_turn_cap_winner_is_the_highest_hp_or_a_draw() -> None:
+    """상한 종료의 승자는 최고 HP 이고, 동점이면 무승부다 (슬롯 유불리 없음)."""
+    players = _players(3)
+    cap = Match.effective_turn_cap(3)
+    assert Match.round_outcome(players, cap).winner is None, "전원 동점인데 승자가 나왔다"
+    players[1].hp = 90
+    players[2].hp = 80
+    assert Match.round_outcome(players, cap).winner == 0
+
+
+def test_overkill_credits_only_what_was_actually_removed() -> None:
+    """빈사 상태 적에게 큰 무기를 맞혀도 실제로 깎인 만큼만 정산한다.
+
+    예전에는 남은 HP 3 인 적에게 핵포탄(120 피해)을 맞히면 960G·120점을 받았다.
+    """
+    T.grid.fill(T.EMPTY)
+    players = _players(2)
+    players[1].hp = 3
+    gold_before = players[0].gold
+    nuke = Wp.by_id(Wp.NUCLEAR_WEAPON_ID)
+    det = Match.OwnedDetonation(x=players[1].x, y=players[1].y - (B.TANK_H >> 1), weapon=nuke, owner=0)
+
+    Match.apply_detonations(players, [det])
+
+    assert players[1].hp <= 0
+    assert players[0].damage_done == 3, f"기여가 {players[0].damage_done} 로 잡혔다 (3 이어야 한다)"
+    assert players[0].gold - gold_before == 3 * Match.RULES.gold_per_damage
+
+
+def test_zero_damage_graze_does_not_burn_the_shield() -> None:
+    """반경 끄트머리의 피해 0 히트가 차폐막을 소모하지 않는다.
+
+    정수 시프트 때문에 반경 1024 무기는 1020~1023 거리에서 `dmg = 0` 이 나온다.
+    그걸로 600G 아이템이 벗겨지면 **일부러 끄트머리에 떨어뜨리는 것이 공짜 해제**가 된다.
+    """
+    T.grid.fill(T.EMPTY)
+    players = _players(2)
+    players[1].shield_up = True
+    weapon = Wp.by_id(0)  # 반경 1024
+
+    # 피해가 0 이 나오는 거리에 떨어뜨린다
+    target_y = players[1].y - (B.TANK_H >> 1)
+    det = Match.OwnedDetonation(x=players[1].x + 1022, y=target_y, weapon=weapon, owner=0)
+    hits = B.compute_damage(det.x, det.y, weapon.to_damage(), players)
+    assert any(h.idx == 1 and h.dmg == 0 for h in hits), f"피해 0 히트가 안 나온다: {hits}"
+
+    Match.apply_detonations(players, [det])
+    assert players[1].shield_up is True, "피해 0 인데 차폐막이 벗겨졌다"
+    assert players[1].hp == B.MAX_HP
+
+
+def test_burial_damage_goes_to_whoever_buried_them() -> None:
+    """매몰 지속 피해와 처치가 **묻은 사람**에게 간다.
+
+    예전에는 매 턴 발사자로 갈아끼워져서, 남이 묻어놓은 적 쪽으로 아무 데나 쏘기만 해도
+    턴당 피해와 킬을 가져갔다.
+    """
+    T.grid.fill(T.EMPTY)
+    g2 = T.grid.reshape(T.H, T.W)
+    g2[300:522, :] = T.SOIL
+    g2[522:, :] = T.BEDROCK
+
+    players = _players(3)
+    victim = players[1]
+    victim.y = B.surface_sub_y(victim.x)
+    top = victim.y >> B.CELL_SHIFT
+    g2[top - 12 : top, (victim.x >> B.CELL_SHIFT) - 12 : (victim.x >> B.CELL_SHIFT) + 12] = T.SOIL
+
+    # 슬롯 2 가 묻었다
+    Match.apply_phase(players, last_blast_owner=2)
+    assert victim.buried, "매몰 시나리오가 성립하지 않았다"
+    assert victim.buried_by == 2
+    assert players[2].damage_done > 0
+
+    # 다음 턴은 슬롯 0 이 쐈다 — 그래도 매몰 피해는 슬롯 2 공이다
+    burier_before = players[2].damage_done
+    shooter_before = players[0].damage_done
+    Match.apply_phase(players, last_blast_owner=0)
+    assert players[2].damage_done > burier_before, "묻은 사람이 공을 못 받았다"
+    assert players[0].damage_done == shooter_before, "그 턴 발사자가 남의 공을 가져갔다"
+
+    # 매몰로 죽으면 킬도 묻은 사람에게
+    victim.hp = 1
+    kills_before = players[2].kills
+    Match.apply_phase(players, last_blast_owner=0)
+    assert not victim.alive
+    assert players[2].kills == kills_before + 1, "매몰 처치가 묻은 사람에게 안 갔다"
+    assert players[0].kills == 0

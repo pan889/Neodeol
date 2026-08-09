@@ -116,6 +116,7 @@ export function ruleFingerprint(): number[] {
     B.CFG.fallDamageShift,
     B.CFG.burialPermille,
     B.CFG.burialDamage,
+    B.CFG.burialReliefCells,
   );
 
   /* 7. 자동자. `seed` 는 매치마다 달라지므로 넣지 않는다 */

@@ -85,7 +85,7 @@ MAPGEN_VERSION: Final = 2
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 7
+MATCH_VERSION: Final = 8
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500
@@ -230,6 +230,15 @@ PROVINCE_TABLE: Final = (
 )
 
 
+#: 재배치 1회가 매몰을 완화하는 최대 셀 수. `terrain.md` §6.1 · `decisions.md` B13
+#:
+#: **0 이면 매몰이 영구가 되고, 무한이면 매몰이 아예 안 생긴다.** 둘 다 겪었다 —
+#: 처음에는 밀어올리기 임계가 1000‰ 이라 800~999‰ 에 갇혀 17턴 확정사였고,
+#: 임계를 800‰ 로 낮췄더니 이번엔 `apply_phase` 가 매 턴 reseat 를 먼저 부르는 탓에
+#: `player.buried` 가 참이 될 수 없어 메카닉이 통째로 사라졌다.
+#: 턴당 조금씩 밀어올려 **몇 턴 묻혀 있다가 기어나오게** 한다.
+BURIAL_RELIEF_CELLS: Final = 1
+
 _EXCLUDED_FROM_HASH: Final = frozenset(
     {"SIM_VERSION", "PROTOCOL_VERSION", "PROVISIONAL", "TRIG_TABLE_PATH", "RESYNC_PER_TURN"}
 )
@@ -296,6 +305,10 @@ def compute_sim_version() -> str:
     return hashlib.sha256(blob.encode()).hexdigest()[:16]
 
 
+# ⚠ **이 줄 아래에 정의한 상수는 import 시점 해시에 안 들어간다.**
+# `SIM_VERSION` 은 여기서 한 번 계산되므로, 뒤에 추가한 상수는 나중의
+# `compute_sim_version()` 호출과만 값이 달라진다. 규칙 상수는 반드시 위에 둔다.
+# (`test_constants_stable` 이 이 실수를 잡는다 — 실제로 `BURIAL_RELIEF_CELLS` 로 겪었다)
 SIM_VERSION: Final = compute_sim_version()
 
 #: 와이어 프로토콜 버전. 메시지 구조가 바뀌면 손으로 올린다 (netcode.md).

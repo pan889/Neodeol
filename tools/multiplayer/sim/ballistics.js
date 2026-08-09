@@ -25,7 +25,8 @@ export const CFG = {
     fallDamageNum: 1,
     fallDamageShift: 1,
     burialPermille: 800,
-    burialDamage: 6
+    burialDamage: 6,
+    burialReliefCells: 1
 };
 export function solidAtSub(xs, ys) {
     if (ys < 0) return false;
@@ -224,8 +225,11 @@ export function reseatTank(tank) {
         if (supported(tank)) break;
         tank.y += CELL_SUBPX;
     }
-    guard = 0;
-    while(guard++ < H * 2 && buriedFraction(tank) >= CFG.burialPermille)tank.y -= CELL_SUBPX;
+    let relief = 0;
+    while(relief < CFG.burialReliefCells && buriedFraction(tank) >= CFG.burialPermille){
+        relief++;
+        tank.y -= CELL_SUBPX;
+    }
     const fallPx = tank.y - startY >> PX_SHIFT;
     return fallPx > 0 ? fallPx : 0;
 }

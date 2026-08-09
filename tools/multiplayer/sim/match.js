@@ -4,7 +4,7 @@ import * as T from "./terrain.js";
 import * as B from "./ballistics.js";
 import * as Wp from "./weapons.js";
 import * as M from "./mapgen.js";
-export const MATCH_VERSION = 7;
+export const MATCH_VERSION = 8;
 export const AMMO_INFINITE = 0x7fffffff;
 export const RULES = {
     rounds: 5,
@@ -51,7 +51,8 @@ export function makePlayer(slot, name, isAI, xSub) {
         kills: 0,
         damageDone: 0,
         intent: null,
-        shieldUp: false
+        shieldUp: false,
+        buriedBy: null
     };
 }
 export function ammoOf(player, weaponId) {
@@ -271,6 +272,7 @@ export function applyDetonations(players, source) {
     for (const damage of pending){
         const player = players[damage.idx];
         if (!player.alive) continue;
+        if (damage.dmg <= 0) continue;
         if (player.shieldUp) {
             player.shieldUp = false;
             events.push({
@@ -279,8 +281,9 @@ export function applyDetonations(players, source) {
             });
             continue;
         }
+        const dealt = damage.dmg < player.hp ? damage.dmg : player.hp;
         player.hp -= damage.dmg;
-        creditDamage(players, damage.owner, damage.dmg);
+        creditDamage(players, damage.owner, dealt);
         events.push({
             t: "damage",
             slot: player.slot,
@@ -330,21 +333,28 @@ export function applyPhase(players, lastBlastOwner) {
     for (const player of players){
         if (!player.alive) continue;
         events.push(...applyFall(players, player, B.reseatTank(player), lastBlastOwner));
+        let killer = lastBlastOwner;
         const buriedFraction = B.buriedFraction(player);
         const wasBuried = player.buried;
         player.buried = buriedFraction >= B.CFG.burialPermille;
         if (player.buried) {
+            if (!wasBuried) player.buriedBy = lastBlastOwner;
+            const owner = player.buriedBy;
+            const dealt = B.CFG.burialDamage < player.hp ? B.CFG.burialDamage : player.hp;
+            const hpBeforeBurial = player.hp;
             player.hp -= B.CFG.burialDamage;
-            creditDamage(players, lastBlastOwner, B.CFG.burialDamage);
+            creditDamage(players, owner, dealt);
+            if (hpBeforeBurial > 0 && player.hp <= 0) killer = owner;
             events.push({
                 t: "buried",
                 slot: player.slot,
                 pct: floorDiv(buriedFraction, 10),
                 dmg: B.CFG.burialDamage,
-                by: lastBlastOwner
+                by: owner
             });
-        } else if (wasBuried) {
-            events.push({
+        } else {
+            player.buriedBy = null;
+            if (wasBuried) events.push({
                 t: "unburied",
                 slot: player.slot
             });
@@ -355,12 +365,16 @@ export function applyPhase(players, lastBlastOwner) {
             events.push({
                 t: "dead",
                 slot: player.slot,
-                by: lastBlastOwner
+                by: killer
             });
-            creditKill(players, lastBlastOwner, player.slot);
+            creditKill(players, killer, player.slot);
         }
     }
     return events;
+}
+export function effectiveTurnCap(playerCount) {
+    const cap = RULES.roundTurnCap;
+    return playerCount > 0 ? cap - cap % playerCount : cap;
 }
 export function roundOutcome(players, roundTurn) {
     assertPlayers(players);
@@ -372,7 +386,7 @@ export function roundOutcome(players, roundTurn) {
             winner: alive.length === 1 ? alive[0].slot : null
         };
     }
-    if (roundTurn >= RULES.roundTurnCap) {
+    if (roundTurn >= effectiveTurnCap(players.length)) {
         let bestHp = alive[0].hp;
         for(let i = 1; i < alive.length; i++)if (alive[i].hp > bestHp) bestHp = alive[i].hp;
         const leaders = alive.filter((player)=>player.hp === bestHp);
@@ -418,6 +432,7 @@ export function beginRound(players, spawnCells, rotation) {
         player.hp = B.MAX_HP;
         player.alive = true;
         player.buried = false;
+        player.buriedBy = null;
         player.shieldUp = false;
         player.intent = null;
         player.x = spawnCells[(i + shift) % players.length] * B.CELL_SUBPX;
