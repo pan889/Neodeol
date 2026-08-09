@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gzip
+import pathlib
 from urllib.parse import urlencode
 
 from fastapi.testclient import TestClient
@@ -11,6 +12,17 @@ from talus import constants
 from talus.net.app import app
 from talus.net.protocol import ErrorCode, pack_message, unpack_message
 from talus.sim.intmath import fnv1a32
+
+
+def _repo_root() -> pathlib.Path | None:
+    here = pathlib.Path(__file__).resolve()
+    for parent in (here, *here.parents):
+        if (parent / "tables" / "trig.bin").is_file():
+            return parent
+    return None
+
+
+REPO = _repo_root()
 
 
 def _socket_path(session: dict[str, object], **overrides: object) -> str:
@@ -321,3 +333,171 @@ def test_rule_hash_reacts_to_a_balance_change() -> None:
         Wp.WEAPONS[1] = original
     assert before != after, "무기 피해를 바꿨는데 지문이 그대로다"
     assert Rules.rule_hash() == before, "복원 후 값이 안 돌아왔다"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 상점 · 라운드 전환 · 리싱크 — room/service.py 의 나머지 절반
+#
+# 기존 테스트는 라운드 1의 턴 1~2 까지만 갔다. 그래서 `buy` · `shopReady` ·
+# `_start_next_round_locked` · `resyncReq` · `matchEnd` 가 전부 무테스트였고,
+# 리뷰에서 변이 8개를 동시에 주입해도 전체 스위트가 통과했다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def _make_room(client: TestClient, players: int = 2) -> tuple[str, list[dict]]:
+    host = client.post("/api/rooms", json={"name": "host", "maxPlayers": players}).json()
+    code = host["roomCode"]
+    sessions = [host]
+    for index in range(1, players):
+        sessions.append(client.post(f"/api/rooms/{code}/join", json={"name": f"g{index}"}).json())
+    return code, sessions
+
+
+def _end_the_round(client: TestClient, code: str) -> None:
+    """활성 슬롯을 뺀 전원을 쓰러뜨려 다음 턴에 라운드가 끝나게 만든다.
+
+    라운드를 실제로 싸워서 끝내려면 명중이 필요하고, 그건 결정론적으로 잡기 어렵다.
+    여기서 검증하려는 것은 전투가 아니라 **라운드 경계 이후의 서비스 동작**이다.
+    """
+    manager = app.state.room_manager
+    room = manager._rooms[code]
+    state = room.state
+    assert state is not None
+    for player in state.players:
+        if player.slot != state.active_slot:
+            player.hp = 0
+            player.alive = False
+
+
+def test_shop_round_transition_and_purchases() -> None:
+    """라운드 종료 → 상점 → 구매 → 준비 → 다음 라운드가 실제로 돈다."""
+    with TestClient(app) as client:
+        code, (host, guest) = _make_room(client)
+        with client.websocket_connect(_socket_path(host)) as hs, \
+             client.websocket_connect(_socket_path(guest)) as gs:
+            _receive_type(hs, "hello")
+            _receive_type(gs, "hello")
+            hs.send_bytes(pack_message({"t": "start"}))
+            _receive_type(hs, "matchInit")
+            _receive_type(gs, "matchInit")
+            turn = _receive_type(hs, "turnBegin")
+            _receive_type(gs, "turnBegin")
+
+            _end_the_round(client, code)
+            hs.send_bytes(pack_message(_intent(turn)))
+            round_end = _receive_type(hs, "roundEnd", limit=20)
+            assert round_end["roundNo"] == 1
+            _receive_type(gs, "roundEnd", limit=20)
+
+            # ── 상점 게이트: 라운드 번호가 다르면 거부한다
+            hs.send_bytes(pack_message({"t": "buy", "roundNo": 99, "kind": "item", "itemKey": "shield"}))
+            assert _receive_type(hs, "error")["code"] == ErrorCode.BAD_PHASE
+
+            # ── 형식이 잘못된 구매
+            hs.send_bytes(pack_message({"t": "buy", "roundNo": 1, "kind": "nope"}))
+            assert _receive_type(hs, "error")["code"] == ErrorCode.BAD_MESSAGE
+
+            # ── 실제 구매: 골드가 줄고 아이템이 는다
+            manager = app.state.room_manager
+            state = manager._rooms[code].state
+            before_gold = state.players[0].gold
+            hs.send_bytes(pack_message({"t": "buy", "roundNo": 1, "kind": "item", "itemKey": "shield"}))
+            result = _receive_type(hs, "buyResult")
+            assert result["ok"] is True and result["slot"] == 0
+            assert state.players[0].items.shield == 1
+            assert state.players[0].gold < before_gold
+            assert result["player"]["gold"] == state.players[0].gold
+
+            # ── 돈이 모자란 구매는 실패하되 상태를 안 바꾼다
+            state.players[0].gold = 0
+            hs.send_bytes(pack_message({"t": "buy", "roundNo": 1, "kind": "weapon", "weaponId": 1}))
+            assert _receive_type(hs, "buyResult")["ok"] is False
+            assert state.players[0].gold == 0
+
+            # 준비는 전원이 해야 넘어간다 — 한 명만으로는 상점에 머무른다
+            hs.send_bytes(pack_message({"t": "shopReady", "roundNo": 1}))
+            hs.send_bytes(pack_message({"t": "resyncReq", "turnNo": 1, "myChecksum": 0}))
+            _receive_type(hs, "fullState", limit=20)
+            assert manager._rooms[code].status == "shop", "한 명 준비로 라운드가 넘어갔다"
+
+            # ── 나머지가 준비하면 다음 라운드가 시작한다
+            gs.send_bytes(pack_message({"t": "shopReady", "roundNo": 1}))
+            start = _receive_type(hs, "roundStart", limit=20)
+            assert start["roundNo"] == 2
+            # ⚠ `room.state` 는 라운드 전환에서 **새 객체로 바뀐다** — 프로세스 풀을
+            #   건너오며 pickle 되기 때문이다. 옛 참조를 들고 있으면 라운드 1 을 본다.
+            state = manager._rooms[code].state
+            assert state.round_no == 2
+            # 라운드가 바뀌면 전원이 되살아난다
+            assert all(player.alive for player in state.players)
+            assert all(player.hp == constants.MAX_HP for player in state.players)
+
+
+def test_resync_request_sends_full_state_and_counts() -> None:
+    """`resyncReq` 가 전체 지형을 보내고 텔레메트리에 잡힌다.
+
+    절대 규칙 4 의 **복구 경로**다 — 정상 경로가 아니라는 것이 카운터로 드러나야 한다.
+    """
+    with TestClient(app) as client:
+        code, (host, guest) = _make_room(client)
+        with client.websocket_connect(_socket_path(host)) as hs, \
+             client.websocket_connect(_socket_path(guest)) as gs:
+            _receive_type(hs, "hello")
+            _receive_type(gs, "hello")
+            hs.send_bytes(pack_message({"t": "start"}))
+            _receive_type(hs, "matchInit")
+            _receive_type(gs, "matchInit")
+            _receive_type(hs, "turnBegin")
+
+            hs.send_bytes(pack_message({"t": "resyncReq", "turnNo": 1, "myChecksum": 0}))
+            full = _receive_type(hs, "fullState", limit=20)
+            grid = gzip.decompress(full["gridGzip"])
+            assert len(grid) == constants.GRID_W * constants.GRID_H
+            assert fnv1a32(grid) == full["checksum"]
+
+            telemetry = client.get(f"/api/rooms/{code}").json()["telemetry"]
+            assert telemetry["resyncs"] >= 1, f"리싱크가 안 세어진다: {telemetry}"
+            assert telemetry["desyncs"] == 0, "요청 리싱크가 desync 로 잡히면 안 된다"
+
+
+def test_aim_timeout_resolves_the_turn_without_input() -> None:
+    """조준 시간이 지나면 서버가 알아서 턴을 해결한다.
+
+    **끊긴 플레이어가 방을 멈추면 안 된다** (roadmap Phase 4 완료 조건).
+    타이머를 짧게 준 매니저를 직접 쓴다 — 실제 상수(30초)로는 테스트가 못 기다린다.
+    """
+    import asyncio
+
+    from talus.room.service import RoomManager
+
+    async def scenario() -> None:
+        root = REPO if REPO else pathlib.Path(".")
+        manager = RoomManager(root / "tables" / "trig.bin", sim_workers=1)
+        try:
+            room, host_seat = await manager.create_room("host", 2)
+            await manager.join_room(room.code, "guest")
+            for seat in room.seats:
+                seat.connected = True
+                seat.websocket = _NullSocket()
+            await manager.start_match(room, host_seat)
+            assert room.status == "aim"
+            first_turn = room.state.turn_no
+
+            # 서버가 스스로 해결하도록 타이머를 즉시 만료시킨다
+            room.cancel_tasks()
+            await manager._aim_timeout(room, room.state.turn_no + 1, room.state.active_slot, 0)
+            assert room.state.turn_no == first_turn + 1, "입력 없이 턴이 안 넘어갔다"
+        finally:
+            await manager.close()
+
+    asyncio.run(scenario())
+
+
+class _NullSocket:
+    """전송을 삼키는 가짜 WebSocket. 서비스 로직만 볼 때 쓴다."""
+
+    async def send_bytes(self, _payload: bytes) -> None:
+        return None
+
+    async def close(self, code: int = 1000) -> None:
+        return None
