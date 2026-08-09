@@ -425,3 +425,82 @@ def test_settle_terminates_full_grid() -> None:
         worst = max(worst, steps)
     # 실측 16,584 ~ 24,688 스텝. 상한에 2배 이상 여유가 있어야 한다
     assert worst < SETTLE_LIMIT // 2, f"최악 {worst} 스텝 — 상한 여유가 사라졌다"
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SIM_VERSION 이 실제로 규칙 전체를 덮는가
+#
+# `constants.py` 독스트링은 "상수가 하나라도 바뀌면 값이 바뀐다"고 주장하는데, 한동안
+# 거짓이었다. 스냅샷이 `int/str/dict` 만 담아서 **tuple 인 무기 표와 지질 프로파일이
+# 통째로 빠졌고**, 밸런스를 바꿔도 `SIM_VERSION` 이 그대로였다 — 규칙이 다른 두
+# 클라이언트가 핸드셰이크를 통과해 같은 방에 들어갈 수 있었다.
+# ══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.determinism
+def test_every_constant_is_hashed() -> None:
+    """타입 때문에 해시에서 빠지는 상수가 없다.
+
+    이게 없으면 상수를 추가했는데 `SIM_VERSION` 이 안 바뀌는 상태를 **조용히** 만든다.
+    새 상수가 tuple/list/dict 중첩이어도 `_normalize` 가 펴야 하고, 못 펴면 여기서 터진다.
+    """
+    included, skipped = constants.hashable_constant_names()
+    assert not skipped, (
+        f"해시에서 빠지는 상수가 있다: {skipped}\n"
+        "  → constants._normalize 가 그 타입을 다루게 하거나, "
+        "규칙과 무관하면 _EXCLUDED_FROM_HASH 에 넣고 이유를 적는다"
+    )
+    assert len(included) > 50, f"해시 대상이 {len(included)}개뿐이다"
+
+
+@pytest.mark.determinism
+def test_sim_version_tracks_weapon_balance() -> None:
+    """무기 값을 하나만 바꿔도 `SIM_VERSION` 이 바뀐다."""
+    original = constants.WEAPON_TABLE
+    before = constants.compute_sim_version()
+    row = list(original[1])
+    row[3] += 1  # max_damage
+    try:
+        constants.WEAPON_TABLE = tuple([original[0], tuple(row), *original[2:]])
+        after = constants.compute_sim_version()
+    finally:
+        constants.WEAPON_TABLE = original
+    assert before != after, "무기 피해를 바꿨는데 SIM_VERSION 이 그대로다"
+    assert constants.compute_sim_version() == before, "복원 후 값이 안 돌아왔다"
+
+
+@pytest.mark.determinism
+def test_sim_version_tracks_map_geology() -> None:
+    """지질 프로파일을 바꿔도 `SIM_VERSION` 이 바뀐다."""
+    original = constants.PROVINCE_TABLE
+    before = constants.compute_sim_version()
+    row = list(original[0])
+    row[0] += 1  # 모래 두께
+    try:
+        constants.PROVINCE_TABLE = tuple([tuple(row), *original[1:]])
+        after = constants.compute_sim_version()
+    finally:
+        constants.PROVINCE_TABLE = original
+    assert before != after, "지층 두께를 바꿨는데 SIM_VERSION 이 그대로다"
+
+
+@pytest.mark.determinism
+def test_sim_modules_do_not_keep_a_second_copy_of_the_tables() -> None:
+    """`sim/` 이 상수표를 다시 적지 않고 `constants.py` 에서 읽는다.
+
+    사본이 둘이면 한쪽만 고쳐지고, 그때 `SIM_VERSION` 은 안 고쳐진 쪽을 해시한다.
+    """
+    from talus.sim import mapgen as M
+    from talus.sim import weapons as Wp
+
+    assert len(Wp.WEAPONS) == len(constants.WEAPON_TABLE)
+    for weapon, row in zip(Wp.WEAPONS, constants.WEAPON_TABLE, strict=True):
+        assert weapon.id == row[0] and weapon.name == row[1] and weapon.kind == row[2]
+        assert weapon.max_damage == row[3] and weapon.blast_radius == row[4]
+        assert weapon.carve_cells == row[5]
+        assert weapon.ammo0 == (None if row[6] < 0 else row[6])
+        assert weapon.price == row[7]
+
+    assert len(M.PROVINCES) == len(constants.PROVINCE_TABLE)
+    for (bands, depth), row in zip(M.PROVINCES, constants.PROVINCE_TABLE, strict=True):
+        assert list(bands) == list(row[:5]) and depth == row[5]

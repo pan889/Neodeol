@@ -36,6 +36,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from talus import constants
+
 from . import ballistics as B
 from . import terrain as T
 from .intmath import hash32_scalar
@@ -86,44 +88,55 @@ class Weapon:
         )
 
 
-WEAPONS: list[Weapon] = [
-    Weapon(id=0, name="표준탄", kind="plain",
-           max_damage=45, blast_radius=1024, carve_cells=28,
-           ammo0=None, price=0,
-           desc="작은 원형 구덩이. 무한"),
-    Weapon(id=1, name="파쇄탄", kind="plain",
-           max_damage=62, blast_radius=2048, carve_cells=60,
-           ammo0=2, price=700,
-           desc="큰 구덩이 + 넓은 붕괴 유발"),
-    Weapon(id=2, name="분열탄", kind="split",
-           max_damage=30, blast_radius=512, carve_cells=16,
-           split_count=5, split_spread=34,  # subpx/tick. 정점에서 좌우로 벌어진다
-           ammo0=2, price=850,
-           desc="정점에서 5발로 갈라져 산개"),
-    Weapon(id=3, name="굴착탄", kind="burrow",
-           max_damage=55, blast_radius=1024, carve_cells=24,
-           burrow_cells=46,  # 착탄 지점에서 아래로 파고드는 셀 수
-           ammo0=2, price=800,
-           desc="지면에 박힌 뒤 아래로 파고들어 폭발"),
-    Weapon(id=4, name="전복탄", kind="roll",
-           max_damage=50, blast_radius=1024, carve_cells=26,
-           roll_cells=140,  # 경사를 따라 굴러가는 최대 셀 수
-           ammo0=2, price=900,
-           desc="착탄 후 경사를 따라 굴러가서 폭발"),
-    Weapon(id=5, name="성형탄", kind="plain",
-           max_damage=95, blast_radius=512, carve_cells=5,
-           ammo0=2, price=950,
-           desc="피해 높고 구덩이는 아주 작다. 지형 보존"),
-    Weapon(id=6, name="적층탄", kind="deposit",
-           max_damage=0, blast_radius=512, carve_cells=0,
-           deposit_cells=30, deposit_mat=T.SOIL,
-           ammo0=2, price=650,
-           desc="폭발 대신 흙을 쌓는다. 유일한 지형 추가"),
-    Weapon(id=7, name="핵포탄", kind="plain",
-           max_damage=120, blast_radius=4096, carve_cells=80,
-           ammo0=0, price=4800,
-           desc="초기 0발. 전장을 뒤엎는 초대형 폭발"),
-]
+def _from_table() -> list[Weapon]:
+    """`constants.WEAPON_TABLE` 에서 무기 표를 만든다.
+
+    **값을 여기 적지 않는다.** 그 전에는 `weapons.ts`/`weapons.py` 에만 있어서 밸런스를
+    바꿔도 `SIM_VERSION` 이 안 바뀌었고, 규칙이 다른 두 클라이언트가 같은 방에 들어갈 수
+    있었다. 이제 `constants.py` 가 유일한 사본이고 해시에 들어간다.
+    TS 쪽 하드코딩이 여기와 같은지는 골든 헤더 대조가 본다.
+    """
+    out: list[Weapon] = []
+    for row in constants.WEAPON_TABLE:
+        (
+            wid, name, kind, max_damage, blast_radius, carve_cells, ammo0, price,
+            split_count, split_spread, burrow_cells, roll_cells, deposit_cells, deposit_mat,
+        ) = row
+        out.append(
+            Weapon(
+                id=wid,
+                name=name,
+                kind=kind,
+                max_damage=max_damage,
+                blast_radius=blast_radius,
+                carve_cells=carve_cells,
+                ammo0=None if ammo0 < 0 else ammo0,
+                price=price,
+                desc=WEAPON_DESC[wid],
+                split_count=split_count,
+                split_spread=split_spread,
+                burrow_cells=burrow_cells,
+                roll_cells=roll_cells,
+                deposit_cells=deposit_cells,
+                deposit_mat=deposit_mat,
+            )
+        )
+    return out
+
+
+#: 설명문은 표현 텍스트라 상수 해시에 넣지 않는다 — 번역해도 규칙이 안 바뀐다.
+WEAPON_DESC: tuple[str, ...] = (
+    "작은 원형 구덩이. 무한",
+    "큰 구덩이 + 넓은 붕괴 유발",
+    "정점에서 5발로 갈라져 산개",
+    "지면에 박힌 뒤 아래로 파고들어 폭발",
+    "착탄 후 경사를 따라 굴러가서 폭발",
+    "피해 높고 구덩이는 아주 작다. 지형 보존",
+    "폭발 대신 흙을 쌓는다. 유일한 지형 추가",
+    "초기 0발. 전장을 뒤엎는 초대형 폭발",
+)
+
+WEAPONS: list[Weapon] = _from_table()
 
 NUCLEAR_WEAPON_ID = 7
 
@@ -141,11 +154,17 @@ class Item:
 #: **측풍계가 정보를 숨기지 않는 이유**: 모든 클라가 같은 입력으로 같은 계산을 하므로
 #: "나만 정확한 바람 값을 안다"는 것이 원리적으로 불가능하다. 서버가 누군가에게 다른
 #: 값을 보내면 그 사람의 재생이 갈라진다. 현재 값은 모두 표시하고 다음 턴을 예보하는 UI 아이템이다.
+#: 설명문은 표현 텍스트라 해시 대상이 아니다.
+ITEM_DESC: tuple[str, ...] = (
+    "1회 피격 무효",
+    "낙하 피해 무효. 자동 발동",
+    "턴당 좌우 이동",
+    "다음 턴 바람과 돌풍을 예보",
+)
+
 ITEMS: list[Item] = [
-    Item(id=0, key="shield", name="차폐막", price=600, desc="1회 피격 무효"),
-    Item(id=1, key="parachute", name="낙하산", price=400, desc="낙하 피해 무효. 자동 발동"),
-    Item(id=2, key="fuel", name="연료", price=300, desc="턴당 좌우 이동"),
-    Item(id=3, key="anemo", name="측풍계", price=500, desc="다음 턴 바람과 돌풍을 예보"),
+    Item(id=i, key=k, name=n, price=p, desc=ITEM_DESC[i])
+    for i, k, n, p in constants.ITEM_TABLE
 ]
 
 

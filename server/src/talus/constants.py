@@ -184,9 +184,99 @@ PROVISIONAL: Final = frozenset(
 #:
 #: 여기 없는 대문자 상수는 **자동으로** 해시에 포함된다. 상수를 추가했는데 해시가
 #: 안 바뀌는 사고를 막기 위해 화이트리스트가 아니라 블랙리스트로 둔다.
+# ══ 무기 표 (game-design.md §6.1 · decisions.md C1) ═══════════════════════
+# **여기가 기계 판독 사본이다.** `sim/weapons.py` 가 이 표를 읽고, TS 쪽 하드코딩 값이
+# 여기와 같은지는 골든 헤더 대조가 본다 (`test_cross_sim.py`).
+#
+# 그 전에는 무기 8종의 값이 `weapons.ts`/`weapons.py` 에만 있어서 **밸런스를 바꿔도
+# `SIM_VERSION` 이 안 바뀌었다.** 규칙이 다른 두 클라이언트가 같은 방에 들어갈 수 있었다.
+#
+# 열: (id, name, kind, max_damage, blast_radius, carve_cells, ammo0, price,
+#      split_count, split_spread, burrow_cells, roll_cells, deposit_cells, deposit_mat)
+# `ammo0 = -1` 은 무한을 뜻한다 (`AMMO_INFINITE` 는 런타임 표현이라 값이 다르다).
+WEAPON_TABLE: Final = (
+    (0, "표준탄", "plain", 45, 1024, 28, -1, 0, 0, 0, 0, 0, 0, 0),
+    (1, "파쇄탄", "plain", 62, 2048, 60, 2, 700, 0, 0, 0, 0, 0, 0),
+    (2, "분열탄", "split", 30, 512, 16, 2, 850, 5, 34, 0, 0, 0, 0),
+    (3, "굴착탄", "burrow", 55, 1024, 24, 2, 800, 0, 0, 46, 0, 0, 0),
+    (4, "전복탄", "roll", 50, 1024, 26, 2, 900, 0, 0, 0, 140, 0, 0),
+    (5, "성형탄", "plain", 95, 512, 5, 2, 950, 0, 0, 0, 0, 0, 0),
+    (6, "적층탄", "deposit", 0, 512, 0, 2, 650, 0, 0, 0, 0, 30, 2),
+    (7, "핵포탄", "plain", 120, 4096, 80, 0, 4800, 0, 0, 0, 0, 0, 0),
+)
+
+#: 비-포탄 아이템 (game-design.md §6.2). 열: (id, key, name, price)
+ITEM_TABLE: Final = (
+    (0, "shield", "차폐막", 600),
+    (1, "parachute", "낙하산", 400),
+    (2, "fuel", "연료", 300),
+    (3, "anemo", "측풍계", 500),
+)
+
+# ══ 맵 생성 (mapgen.md §3 §4) ═════════════════════════════════════════════
+NOISE_SHIFT: Final = 7
+SURFACE_BASE: Final = 170  # cells
+SURFACE_AMP: Final = 60  # cells
+MAPGEN_BEDROCK_Y: Final = 522
+PROVINCE_BLEND: Final = 48  # 구역 경계 혼합 폭 (셀)
+
+#: 지질 구역 프로파일. 열: (SAND, SOIL, SAND, SCREE, SOIL 두께, 기반암 깊이)
+#: 기반암 깊이 0 은 `MAPGEN_BEDROCK_Y` 를 그대로 쓴다는 뜻이다. mapgen.md §4.1
+PROVINCE_TABLE: Final = (
+    (34, 14, 6, 10, 30, 0),  # 0 모래 분지
+    (0, 48, 4, 8, 40, 0),  # 1 점토 대지
+    (0, 0, 0, 34, 30, 0),  # 2 자갈 사면
+    (6, 12, 0, 6, 16, 132),  # 3 암반 선반
+)
+
+
 _EXCLUDED_FROM_HASH: Final = frozenset(
     {"SIM_VERSION", "PROTOCOL_VERSION", "PROVISIONAL", "TRIG_TABLE_PATH"}
 )
+
+
+def _normalize(value: object) -> object:
+    """해시에 넣을 수 있는 형태로 정규화한다. 지원하지 않는 타입이면 `None`.
+
+    dict 키가 int 인 경우가 있어 json 직렬화 순서를 고정하려면 문자열로 바꿔야 한다.
+    tuple/list 는 재귀로 편다 — 무기 표와 지질 프로파일이 이 형태다.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, str)):
+        return value
+    if isinstance(value, dict):
+        out: dict[str, object] = {}
+        for key in sorted(value, key=str):
+            item = _normalize(value[key])
+            if item is None:
+                return None
+            out[str(key)] = item
+        return out
+    if isinstance(value, (tuple, list)):
+        items = [_normalize(v) for v in value]
+        return None if any(i is None for i in items) else items
+    return None
+
+
+def hashable_constant_names() -> tuple[list[str], list[str]]:
+    """`(해시에 들어가는 이름, 타입 때문에 빠지는 이름)`.
+
+    두 번째가 비어 있지 않으면 **상수를 추가했는데 `SIM_VERSION` 이 안 바뀌는 상태**다.
+    `test_every_constant_is_hashed` 가 이걸 막는다 — 실제로 무기 표와 맵 생성 상수가
+    `tuple` 이라는 이유로 통째로 빠져 있었고, 밸런스를 바꿔도 `SIM_VERSION` 이 그대로였다.
+    """
+    g = globals()
+    included: list[str] = []
+    skipped: list[str] = []
+    for name in sorted(g):
+        if not name.isupper() or name.startswith("_") or name in _EXCLUDED_FROM_HASH:
+            continue
+        value = g[name]
+        if callable(value) or isinstance(value, type):
+            continue
+        (included if _normalize(value) is not None else skipped).append(name)
+    return included, skipped
 
 
 def constants_snapshot() -> dict[str, object]:
@@ -196,20 +286,8 @@ def constants_snapshot() -> dict[str, object]:
     `server/tests/test_determinism.py::test_constants_stable` 이 이를 검증한다.
     """
     g = globals()
-    names = sorted(
-        n
-        for n, v in g.items()
-        if n.isupper()
-        and not n.startswith("_")
-        and n not in _EXCLUDED_FROM_HASH
-        and isinstance(v, (int, str, dict))
-    )
-    out: dict[str, object] = {}
-    for n in names:
-        v = g[n]
-        # dict 키가 int 라 json 직렬화에서 순서를 고정하려면 문자열로 바꿔야 한다.
-        out[n] = {str(k): v[k] for k in sorted(v)} if isinstance(v, dict) else v
-    return out
+    included, _ = hashable_constant_names()
+    return {name: _normalize(g[name]) for name in included}
 
 
 def compute_sim_version() -> str:

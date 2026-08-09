@@ -11,10 +11,10 @@ from .intmath import clamp_int, floor_div, hash32_scalar, iabs
 from .terrain import BEDROCK, EMPTY, H, N, ROCK, SAND, SCREE, SOIL, W
 
 MAPGEN_VERSION = constants.MAPGEN_VERSION
-NOISE_SHIFT = 7
-SURFACE_BASE = 170
-SURFACE_AMP = 60
-BEDROCK_Y = 522
+NOISE_SHIFT = constants.NOISE_SHIFT
+SURFACE_BASE = constants.SURFACE_BASE
+SURFACE_AMP = constants.SURFACE_AMP
+BEDROCK_Y = constants.MAPGEN_BEDROCK_Y
 
 NOISE_MASK = 127
 NOISE_SALT = 0x4D47
@@ -59,16 +59,15 @@ def _generated_surface(map_seed: int, x: int) -> int:
 #:
 #: **표면 재질이 구역마다 다르다.** 앞 밴드를 0 으로 두어 아래 재질을 노출시킨다 —
 #: 전부 SAND 로 시작하면 화면상 구분이 안 되고, 보이지 않으면 전술이 되지 않는다.
-PROVINCES: tuple[tuple[tuple[int, int, int, int, int], int], ...] = (
-    ((34, 14, 6, 10, 30), 0),    # 0 모래 분지 — 파면 26.6° 로 넓게 흘러내린다
-    ((0, 48, 4, 8, 40), 0),      # 1 점토 대지 — 40.3° 급한 벽이 선다
-    ((0, 0, 0, 34, 30), 0),      # 2 자갈 사면 — 44.2° 각진 더미
-    ((6, 12, 0, 6, 16), 132),    # 3 암반 선반 — 기반암이 얕다
+#: 지질 구역 프로파일. **값은 `constants.PROVINCE_TABLE` 이 유일한 사본이다** —
+#: 여기 적으면 `SIM_VERSION` 이 안 따라온다. mapgen.md §4.1
+PROVINCES: tuple[tuple[tuple[int, int, int, int, int], int], ...] = tuple(
+    ((row[0], row[1], row[2], row[3], row[4]), row[5]) for row in constants.PROVINCE_TABLE
 )
 
 PROVINCE_SALT = 0x9E07
 #: 구역 경계가 지층을 수직으로 자르지 않게 섞는 폭 (셀)
-PROVINCE_BLEND = 48
+PROVINCE_BLEND = constants.PROVINCE_BLEND
 
 
 def _province_order(map_seed: int) -> list[int]:

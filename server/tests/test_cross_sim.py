@@ -154,6 +154,33 @@ def _assert_ballistics_match(header: dict) -> None:
             f"  → 밸런스를 바꿨다면 커밋 메시지에 이유를 적고 골든을 재생성한다"
         )
 
+
+def _assert_tables_match(header: dict) -> None:
+    """골든 헤더의 무기·아이템·지질 표가 `constants.py` 와 같은지 확인한다.
+
+    TS 는 이 값들을 하드코딩하고 Python 은 `constants.py` 에서 읽는다. **두 사본이
+    어긋나는 것을 잡는 유일한 지점이 여기다.** `MATCH_VERSION` 수동 상향에만 기대면
+    "올리는 것을 잊었다"를 아무도 못 잡고, 규칙이 다른 두 클라이언트가 같은 방에 들어간다.
+
+    실제로 그런 상태였다: 무기 8종의 값이 양쪽 소스에만 있어서 `SIM_VERSION` 해시에
+    아예 안 들어갔고, 밸런스를 바꿔도 핸드셰이크가 통과했다.
+    """
+    from talus import constants
+
+    got_weapons = [list(row) for row in constants.WEAPON_TABLE]
+    assert header["weapons"] == got_weapons, (
+        "무기 표가 갈라졌다 — TS(골든)와 constants.py 가 다르다\n"
+        f"  TS     {header['weapons']}\n  Python {got_weapons}"
+    )
+    got_items = [list(row) for row in constants.ITEM_TABLE]
+    assert header["items"] == got_items, "아이템 표가 갈라졌다"
+    got_provinces = [list(row) for row in constants.PROVINCE_TABLE]
+    assert header["provinces"] == got_provinces, (
+        "지질 프로파일이 갈라졌다 — TS(골든)와 constants.py 가 다르다\n"
+        f"  TS     {header['provinces']}\n  Python {got_provinces}"
+    )
+
+
 @pytest.mark.crosssim
 @pytest.mark.parametrize("path", STEP_REPLAYS, ids=lambda p: p.stem)
 def test_cross_sim(path: pathlib.Path) -> None:
@@ -457,6 +484,7 @@ def test_cross_sim_match(path: pathlib.Path) -> None:
     trig.load_trig(blob)
 
     header, records = _load(path)
+    _assert_tables_match(header)
     assert header["matchVersion"] == Match.MATCH_VERSION == constants.MATCH_VERSION
     assert header["mapgenVersion"] == M.MAPGEN_VERSION == constants.MAPGEN_VERSION
     assert len(records) == header["recordCount"]

@@ -216,17 +216,33 @@ function writeMatchReplay(): void {
     }));
   }
 
+  /* 무기를 돌려가며 쏜다. **경제 층까지 8종을 전부 밟게 하는 것이 목적이다** —
+     `shots` 골든은 8종을 밟지만 그건 탄도 층이고, `resolveTurn → applyDetonations →
+     피해·골드` 경로는 예전에 무기 2종(0·5)만 지났다. 분열·굴착·전복·적층의
+     다중 폭발과 지형 추가가 경제에 어떻게 반영되는지 아무도 안 보고 있었다. */
+  let roundOneTurn = 0;
   while (state.roundNo === 1 && state.phase === "aim") {
     const player = state.players[state.activeSlot];
+    const weaponId = roundOneTurn % 7; // 0~6. 7(핵포탄)은 초기 탄약이 0이라 상점을 거친다
+    roundOneTurn++;
     runTurn({
       angle10: player.slot % 2 === 0 ? 450 : 1350,
       power: 0,
-      weaponId: 5,
+      weaponId,
       moveDx: 0,
       useShield: false,
     });
   }
   if (state.phase !== "shop") throw new Error("match 골든: 라운드 1이 상점으로 끝나지 않았다");
+
+  function richestSlot(): number {
+    let best = 0;
+    for (let i = 1; i < state.players.length; i++) {
+      if (state.players[i].gold > state.players[best].gold) best = i;
+    }
+    return best;
+  }
+  const nukeSlot = richestSlot();
 
   const purchases = [
     { slot: 0, kind: "item", key: "shield" },
@@ -236,6 +252,9 @@ function writeMatchReplay(): void {
     { slot: 2, kind: "item", key: "shield" },
     { slot: 2, kind: "item", key: "fuel" },
     { slot: 2, kind: "weapon", weaponId: 5 },
+    /* 핵포탄은 초기 탄약이 0이라 사는 것 말고는 발사 경로가 없다.
+       가장 부유한 슬롯에 붙여 라운드 2에서 실제로 쏘게 한다 (§무기 커버리지). */
+    { slot: richestSlot(), kind: "weapon", weaponId: Wp.NUCLEAR_WEAPON_ID },
   ] as const;
   const purchaseResults = purchases.map((purchase) => ({
     ...purchase,
@@ -266,10 +285,13 @@ function writeMatchReplay(): void {
     roundTwoTurn++;
     const player = state.players[state.activeSlot];
     const invalid = roundTwoTurn === 3 && player.slot === 0;
+    /* 핵포탄을 산 슬롯은 첫 턴에 그걸 쏜다. 사는 데 실패했으면 `canFire` 가
+       0번으로 되돌리므로 골든은 그 사실을 그대로 기록한다. */
+    const nuke = !invalid && player.slot === nukeSlot && roundTwoTurn <= state.players.length;
     runTurn({
       angle10: invalid ? 2000 : (player.slot % 2 === 0 ? 450 : 1350),
       power: invalid ? 1200 : 0,
-      weaponId: invalid ? 99 : 0,
+      weaponId: invalid ? 99 : (nuke ? Wp.NUCLEAR_WEAPON_ID : 0),
       moveDx: roundTwoTurn <= 3 ? (player.slot === 1 ? -14 : (invalid ? 9999 : 14)) : 0,
       useShield: roundTwoTurn <= 3 && (player.slot === 0 || player.slot === 2),
     });
@@ -283,6 +305,18 @@ function writeMatchReplay(): void {
     note: "mapSeed + 시간순 activeSlot intent + purchases 만으로 두 라운드의 매치 상태를 재생한다",
     matchVersion: Match.MATCH_VERSION,
     mapgenVersion: M.MAPGEN_VERSION,
+    /* TS 는 무기·지질 값을 하드코딩하고 Python 은 `constants.py` 에서 읽는다.
+       두 사본이 어긋나는 것을 잡는 유일한 지점이 여기다 — 값을 골든에 실어 두면
+       Python 재생이 자기 상수와 대조한다 (`test_cross_sim.py`).
+       버전 수동 상향에만 기대면 "올리는 것을 잊었다"를 아무도 못 잡는다. */
+    weapons: Wp.WEAPONS.map((w) => [
+      w.id, w.name, w.kind, w.maxDamage, w.blastRadius, w.carveCells,
+      w.ammo0 === null ? -1 : w.ammo0, w.price,
+      w.splitCount ?? 0, w.splitSpread ?? 0, w.burrowCells ?? 0,
+      w.rollCells ?? 0, w.depositCells ?? 0, w.depositMat ?? 0,
+    ]),
+    items: Wp.ITEMS.map((i) => [i.id, i.key, i.name, i.price]),
+    provinces: M.PROVINCES.map((p) => [...p.bands, p.bedrockDepth]),
     mapSeed,
     specs,
     cfg: {
