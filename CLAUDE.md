@@ -140,7 +140,7 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py
 #    도커 없이:  cd server && PYTHONPATH=src python -m pytest tests/test_determinism.py
 
 # 1.5) 클라이언트 sim — 지금 실행 가능하다 (Phase 2)
-#      정적 float 검사 + 100회 재생 재현성 + JS 참조 구현과 비트 단위 대조
+#      정적 float 검사 + 생성 사본 stale 검사 + 100회 재생 재현성 + JS 참조 구현과 대조
 npm --prefix client test
 
 # 2) 서버 ↔ 클라이언트 교차 검증 — 지금 실행 가능하다 (Phase 3)
@@ -156,6 +156,10 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 **(2)의 대조는 Python 이 한다** (`server/tests/test_cross_sim.py`). npm 스크립트는 골든의
 무결성만 확인하고 재생을 pytest 에 넘긴다 — 검증 로직을 TS 에도 두면 같은 로직이 두 벌이 되고,
 둘이 어긋날 때 **어느 쪽이 맞는지 판정할 방법이 없다.**
+
+`tools/multiplayer/sim/*.js` 는 `client/src/sim/*.ts` 에서 생성해 **커밋하는 사본**이다.
+(1.5)의 `check:mirror` 가 생성기와 어긋났는지 본다 — 이게 없으면 TS 를 고치고 사본을
+안 갱신했을 때 브라우저만 옛 규칙으로 돌아간다. 갱신은 `node client/tools/build-browser-sim.mjs`.
 
 대조 단위는 **스텝**과 **턴** 두 가지다. 턴 = `carve/deposit → 정착 → 연결성 재검사` 루프
 전체(`terrain.md` §6.1). 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을 잡은 전례가 있으므로

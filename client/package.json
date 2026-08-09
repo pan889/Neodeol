@@ -4,14 +4,17 @@
   "private": true,
   "type": "module",
   "description": "Talus 클라이언트 — 정수 서브픽셀 시뮬레이션 (Phase 2)",
-  "engines": { "node": ">=22.6" },
+  "engines": {
+    "node": ">=22.6"
+  },
   "scripts": {
-    "test": "npm run check:nofloat && npm run test:determinism",
+    "test": "npm run check:nofloat && npm run check:mirror && npm run test:determinism",
     "check:nofloat": "node tools/check-no-float.mjs",
     "test:determinism": "node --experimental-strip-types --no-warnings tests/determinism.mts",
     "test:cross-sim": "node --experimental-strip-types --no-warnings tests/cross-sim.mts",
     "gen:trig": "python3 ../tools/gen_trig.py",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:mirror": "node --no-warnings tools/build-browser-sim.mjs --check"
   },
   "devDependencies": {
     "typescript": "^5.6.0"

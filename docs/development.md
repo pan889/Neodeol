@@ -200,6 +200,7 @@ docker compose exec -T server python /app/scripts/smoke-multiplayer.py
 ### 4.3 결정론 게이트
 
 ```bash
+npm --prefix client test                            # float·사본 stale·결정론. 약 1분
 docker compose exec server python -m pytest /app/tests/test_determinism.py   # 약 2분
 npm --prefix client run test:cross-sim              # 60턴까지. 약 5분
 npm --prefix client run test:cross-sim -- --slow    # 1000턴 포함. 약 25분

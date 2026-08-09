@@ -118,6 +118,26 @@ class Room:
     def connected_slots(self) -> set[int]:
         return {seat.slot for seat in self.seats if seat.connected and seat.websocket is not None}
 
+    def cancel_tasks(self) -> None:
+        """이 룸에 매달린 태스크를 전부 취소한다.
+
+        **룸을 dict 에서 빼는 것만으로는 죽지 않는다.** 페이즈 타이머와 좌석 하트비트는
+        각자 `room` 을 클로저로 잡고 있어서, 참조가 남아 GC 대상도 아니고 타이머가 만료되면
+        `_resolve_turn_locked` 를 계속 부른다 — 아무도 안 보는 룸이 서버에서 영원히
+        시뮬레이션을 돈다. 서버를 오래 띄우면 이게 누적된다.
+        """
+        for task in (self.aim_task, self.playback_task, self.shop_task, self.idle_task):
+            if task is not None and not task.done():
+                task.cancel()
+        self.aim_task = None
+        self.playback_task = None
+        self.shop_task = None
+        self.idle_task = None
+        for seat in self.seats:
+            if seat.heartbeat_task is not None and not seat.heartbeat_task.done():
+                seat.heartbeat_task.cancel()
+            seat.heartbeat_task = None
+
 
 class RoomManager:
     def __init__(
@@ -141,10 +161,7 @@ class RoomManager:
             rooms = list(self._rooms.values())
             self._rooms.clear()
         for room in rooms:
-            for task in (room.aim_task, room.playback_task, room.shop_task, room.idle_task):
-                self._cancel_task(task)
-            for seat in room.seats:
-                self._cancel_task(seat.heartbeat_task)
+            room.cancel_tasks()
         await self._sim.close()
 
     async def create_room(self, name: str, max_players: int) -> tuple[Room, Seat]:
@@ -605,6 +622,9 @@ class RoomManager:
                 async with self._rooms_lock:
                     if self._rooms.get(code) is room and not room.connected_slots():
                         self._rooms.pop(code, None)
+                        # dict 에서 빼는 것만으로는 태스크가 안 죽는다 (`cancel_tasks` 주석)
+                        room.idle_task = None  # 지금 실행 중인 자기 자신은 취소하지 않는다
+                        room.cancel_tasks()
         except (asyncio.CancelledError, RoomError):
             return
 

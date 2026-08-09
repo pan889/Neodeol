@@ -172,3 +172,55 @@ def test_two_player_turn_desync_and_reconnect() -> None:
                 assert resumed_turn["turnNo"] == 2
                 assert resumed_turn["activeSlot"] == 1
 
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 룸을 버릴 때 태스크도 같이 죽는다
+#
+# `_expire_idle_room` 이 `self._rooms.pop()` 만 하던 시절에는 페이즈 타이머와 좌석
+# 하트비트가 그대로 살아남았다. 그 태스크의 클로저가 `room` 을 강하게 잡고 있어
+# GC 대상도 아니고, 타이머가 만료되면 아무도 안 보는 룸이 계속 턴을 해결했다.
+# 서버를 오래 띄우면 누적되는 종류라 테스트가 없으면 안 보인다.
+# ══════════════════════════════════════════════════════════════════════════
+import asyncio
+
+from talus.room.service import Room, Seat
+
+
+def test_cancel_tasks_kills_every_task_on_the_room() -> None:
+    async def scenario() -> None:
+        async def forever() -> None:
+            await asyncio.sleep(3600)
+
+        seats = [
+            Seat(slot=0, name="A", token="t0", host=True),
+            Seat(slot=1, name="B", token="t1"),
+        ]
+        room = Room(code="TEST01", max_players=2, map_seed=1, seats=seats)
+        room.aim_task = asyncio.create_task(forever())
+        room.playback_task = asyncio.create_task(forever())
+        room.shop_task = asyncio.create_task(forever())
+        room.idle_task = asyncio.create_task(forever())
+        for seat in seats:
+            seat.heartbeat_task = asyncio.create_task(forever())
+
+        spawned = [
+            room.aim_task,
+            room.playback_task,
+            room.shop_task,
+            room.idle_task,
+            *[seat.heartbeat_task for seat in seats],
+        ]
+        room.cancel_tasks()
+        await asyncio.gather(*spawned, return_exceptions=True)
+
+        for task in spawned:
+            assert task.cancelled() or task.done(), "태스크가 살아남았다"
+        assert room.aim_task is None
+        assert room.playback_task is None
+        assert room.shop_task is None
+        assert room.idle_task is None
+        for seat in seats:
+            assert seat.heartbeat_task is None, "좌석 하트비트 참조가 남았다"
+
+    asyncio.run(scenario())
