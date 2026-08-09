@@ -87,6 +87,10 @@ class Seat:
     last_pong: float = field(default_factory=time.monotonic)
     build_hash: str = ""
     user_agent: str = ""
+    #: 이 좌석이 마지막으로 전체 상태를 받은 턴과, 그 턴에 받은 횟수.
+    #: 절대 규칙 4 는 전체 지형 전송을 **복구 경로로 한정**한다 — §resync 예산
+    resync_turn: int = -1
+    resync_in_turn: int = 0
 
 
 @dataclass
@@ -114,7 +118,23 @@ class Room:
     idle_task: asyncio.Task[None] | None = field(default=None, repr=False)
 
     def seat_by_token(self, token: str) -> Seat | None:
-        return next((seat for seat in self.seats if secrets.compare_digest(seat.token, token)), None)
+        """token 으로 좌석을 찾는다. 없으면 `None`.
+
+        **바이트로 비교한다.** `secrets.compare_digest` 는 str 인자에 비-ASCII 가 있으면
+        `TypeError` 를 던지는데, token 은 클라이언트가 주는 값이라 무엇이든 올 수 있다.
+        그대로 두면 WebSocket 업그레이드에서 처리 안 된 예외가 나 연결이 끊긴다
+        (`TOKEN_INVALID` 403 이 아니라 서버 오류로 보인다).
+        REST 경로는 Pydantic 이 422 로 먼저 걸러서 안 보였다.
+        """
+        candidate = token.encode("utf-8", "surrogatepass")
+        return next(
+            (
+                seat
+                for seat in self.seats
+                if secrets.compare_digest(seat.token.encode("utf-8"), candidate)
+            ),
+            None,
+        )
 
     def connected_slots(self) -> set[int]:
         return {seat.slot for seat in self.seats if seat.connected and seat.websocket is not None}
@@ -178,7 +198,12 @@ class RoomManager:
                 seats=[seat],
             )
             self._rooms[code] = room
-            return room, seat
+        # **만든 순간부터 회수 대상이다.** 예전에는 `disconnect()` 안에서만 타이머를
+        # 걸었는데, REST 3회(`create` → `join` → `start`)만으로 매치가 시작되는 경로가
+        # 있어서 WebSocket 을 한 번도 안 거친 룸은 타이머가 영원히 안 붙었다.
+        # 아무도 안 들어온 룸이 프로세스 메모리에 그대로 남는다.
+        room.idle_task = asyncio.create_task(self._expire_idle_room(code))
+        return room, seat
 
     async def join_room(self, code: str, name: str) -> tuple[Room, Seat]:
         room = await self.get_room(code)
@@ -307,6 +332,7 @@ class RoomManager:
                 await self.shop_ready(room, seat, message)
             elif message_type == "resyncReq":
                 async with room.lock:
+                    self._charge_resync_budget(room, seat)
                     room.resync_count += 1
                     LOGGER.warning(
                         "resync room=%s mapSeed=%s turn=%s slot=%s client=%s server=%08X "
@@ -341,6 +367,11 @@ class RoomManager:
                 raise RoomError(ErrorCode.ROOM_STARTED, "이미 시작한 룸이다")
             if len(room.seats) < 2:
                 raise RoomError(ErrorCode.BAD_PHASE, "최소 2명이 필요하다")
+            # **아무도 붙어 있지 않으면 시작하지 않는다.** REST `/start` 만으로도
+            # 여기 올 수 있는데, 그러면 매치가 돌기 시작하고 브로드캐스트를 받을 대상이
+            # 없다 — 턴 타이머가 혼자 돌며 프로세스 풀을 물고 있는 룸이 된다.
+            if not room.connected_slots():
+                raise RoomError(ErrorCode.BAD_PHASE, "접속한 플레이어가 없다")
             room.status = "starting"
             await self._broadcast_room_state_locked(room)
             specs = [(candidate.name, False) for candidate in room.seats]
@@ -459,6 +490,30 @@ class RoomManager:
             connected = room.connected_slots()
             if connected.issubset(room.shop_ready):
                 await self._start_next_round_locked(room)
+
+    def _charge_resync_budget(self, room: Room, seat: Seat) -> None:
+        """`resyncReq` 예산을 깎는다. 넘으면 거부한다.
+
+        **절대 규칙 4 는 전체 지형 전송을 접속·재접속·체크섬 불일치로 한정한다.**
+        그런데 이 핸들러는 클라가 보낸 `myChecksum` 을 대조조차 안 하고 무조건
+        518,400 바이트(gzip 전)를 보냈고, 횟수·턴·페이즈 제한이 전부 없었다.
+        어떤 좌석이든 루프로 보내면 서버가 계속 전량을 뿜는다 — 정상 경로가 아닌 것이
+        코드로 강제되지 않았다.
+
+        턴당 소수 회만 허용한다. 진짜 복구는 한 번이면 되고, 두 번째부터는 클라가
+        복구를 못 하고 있다는 뜻이라 더 보내도 같은 결과다. 서버가 죽는 것보다
+        그 좌석이 오류를 받는 편이 낫다 — 재접속하면 예산이 초기화된다.
+        """
+        turn_no = room.state.turn_no if room.state is not None else -1
+        if seat.resync_turn != turn_no:
+            seat.resync_turn = turn_no
+            seat.resync_in_turn = 0
+        seat.resync_in_turn += 1
+        if seat.resync_in_turn > constants.RESYNC_PER_TURN:
+            raise RoomError(
+                ErrorCode.BAD_PHASE,
+                f"리싱크 요청이 턴당 상한({constants.RESYNC_PER_TURN})을 넘었다",
+            )
 
     async def send_error(self, seat: Seat, error: RoomError) -> None:
         try:

@@ -501,3 +501,92 @@ class _NullSocket:
 
     async def close(self, code: int = 1000) -> None:
         return None
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# 복구 경로와 입장 경로의 방어 — 결정이 필요 없는 세 건
+# ══════════════════════════════════════════════════════════════════════════
+
+
+def test_non_ascii_token_is_rejected_not_crashed() -> None:
+    """비-ASCII token 이 처리 안 된 예외를 내지 않는다.
+
+    `secrets.compare_digest` 는 str 인자에 비-ASCII 가 있으면 `TypeError` 를 던진다.
+    token 은 클라이언트가 주는 값이라 무엇이든 온다. REST 는 Pydantic 이 422 로 걸러서
+    안 보였지만, **WebSocket 쿼리는 그대로 통과해 업그레이드 중 예외가 났다.**
+    """
+    from talus.sim import rules as Rules
+
+    with TestClient(app) as client:
+        code, (host, _guest) = _make_room(client)
+
+        rest = client.post(f"/api/rooms/{code}/start", json={"token": "한글토큰"})
+        assert rest.status_code in (403, 422), f"REST 가 {rest.status_code} 를 냈다"
+
+        url = (
+            f"/ws/rooms/{code}?token=%ED%95%9C%EA%B8%80&protocolVersion="
+            f"{constants.PROTOCOL_VERSION}&ruleHash={Rules.RULE_HASH}"
+        )
+        with client.websocket_connect(url) as socket:
+            message = unpack_message(socket.receive_bytes())
+        assert message["t"] == "error", f"예외 대신 오류 메시지를 보내야 한다: {message}"
+        assert message["code"] == ErrorCode.TOKEN_INVALID
+
+
+def test_match_does_not_start_without_a_connected_player() -> None:
+    """접속자가 0명이면 매치를 시작하지 않는다.
+
+    REST 3회(`create` → `join` → `start`)만으로 매치가 돌기 시작하면 브로드캐스트를
+    받을 대상이 없다 — 턴 타이머가 혼자 돌며 프로세스 풀을 물고 있는 룸이 된다.
+    """
+    with TestClient(app) as client:
+        code, (host, _guest) = _make_room(client)
+        response = client.post(f"/api/rooms/{code}/start", json={"token": host["token"]})
+        assert response.status_code == 400, f"접속자 0명인데 {response.status_code}"
+
+        room = app.state.room_manager._rooms[code]
+        assert room.status == "lobby", f"매치가 시작됐다: {room.status}"
+
+
+def test_every_room_gets_a_reclaim_timer_at_creation() -> None:
+    """룸은 **만든 순간부터** 회수 대상이다.
+
+    예전에는 `disconnect()` 안에서만 타이머를 걸어서, WebSocket 을 한 번도 안 거친 룸은
+    영원히 남았다.
+    """
+    with TestClient(app) as client:
+        code, _sessions = _make_room(client)
+        room = app.state.room_manager._rooms[code]
+        assert room.idle_task is not None, "회수 타이머가 안 붙었다"
+        assert not room.idle_task.done()
+
+
+def test_resync_requests_are_capped_per_turn() -> None:
+    """`resyncReq` 가 턴당 상한을 넘으면 거부한다.
+
+    절대 규칙 4 는 전체 지형 전송을 **복구 경로로 한정**하는데, 예전에는 횟수·턴·페이즈
+    제한이 전부 없어서 어떤 좌석이든 루프로 518,400 바이트를 계속 뽑아낼 수 있었다.
+    """
+    with TestClient(app) as client:
+        code, (host, guest) = _make_room(client)
+        with client.websocket_connect(_socket_path(host)) as hs, \
+             client.websocket_connect(_socket_path(guest)) as gs:
+            _receive_type(hs, "hello")
+            _receive_type(gs, "hello")
+            hs.send_bytes(pack_message({"t": "start"}))
+            _receive_type(hs, "matchInit")
+            _receive_type(gs, "matchInit")
+            _receive_type(hs, "turnBegin")
+
+            for attempt in range(constants.RESYNC_PER_TURN):
+                hs.send_bytes(pack_message({"t": "resyncReq", "turnNo": 1, "myChecksum": 0}))
+                _receive_type(hs, "fullState", limit=20), f"{attempt + 1}번째가 거부됐다"
+
+            hs.send_bytes(pack_message({"t": "resyncReq", "turnNo": 1, "myChecksum": 0}))
+            over = _receive_type(hs, "error", limit=20)
+            assert over["code"] == ErrorCode.BAD_PHASE
+            assert "리싱크" in over["msg"], f"다른 이유로 거부됐다: {over}"
+
+            # 다른 좌석의 예산은 따로다
+            gs.send_bytes(pack_message({"t": "resyncReq", "turnNo": 1, "myChecksum": 0}))
+            _receive_type(gs, "fullState", limit=20)

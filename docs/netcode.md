@@ -222,7 +222,7 @@ WebSocket 경로는 `/ws/rooms/{roomCode}`다. 업그레이드 쿼리에 `token`
 | | `weaponId` | uint8 | — | `kind=weapon`일 때 |
 | | `itemKey` | str enum | shield/parachute/fuel/anemo | `kind=item`일 때 |
 | `shopReady` | `roundNo` | uint8 | — | 구매 완료. 전원 ready 또는 30초 뒤 다음 라운드 |
-| `resyncReq` | `turnNo` | uint32 | — | |
+| `resyncReq` | `turnNo`, `myChecksum` | uint32 | — | 복구 요청. **좌석당 턴 상한 `RESYNC_PER_TURN`(2)** |
 | | `myChecksum` | uint32 | — | 격자 체크섬 (`terrain.md` §7.2) |
 | `pong` | `t0` | uint64 | ms | `ping`(§5.2)이 보낸 값을 그대로 반사한다 |
 
@@ -331,6 +331,20 @@ score,kills,damageDone,shieldUp,connected`를 가진다. `items`는
 대조가 실패했을 때의 처리는 `decisions.md` B10.
 
 `resyncReq.myChecksum` 도 같은 값이며, 같은 시점에 계산한 것이어야 한다.
+
+**`resyncReq` 에는 예산이 있다.** 좌석 하나가 한 턴에 받을 수 있는 `fullState` 는
+`RESYNC_PER_TURN`(현재 2)회이고, 넘으면 `BAD_PHASE` 로 거부한다.
+
+> 절대 규칙 4 는 전체 지형 전송을 **접속·재접속·체크섬 불일치로 한정**한다. 그런데 이
+> 핸들러는 한동안 횟수·턴·페이즈 제한이 전혀 없었고 `myChecksum` 을 대조조차 하지 않아서,
+> 어떤 좌석이든 루프로 보내면 서버가 518,400 바이트(gzip 전)를 계속 뿜었다.
+> **"정상 경로가 아니다" 가 문서에만 있고 코드로 강제되지 않았다.**
+>
+> 진짜 복구는 한 번이면 되고, 두 번째부터는 클라가 복구를 못 하고 있다는 뜻이라 더 보내도
+> 같은 결과다. 재접속하면 예산이 초기화된다.
+
+`RESYNC_PER_TURN` 은 **와이어 정책이라 규칙 지문(§5)에 들어가지 않는다** — 값이 달라도
+두 클라이언트는 같은 게임을 계산한다. `SIM_VERSION` 해시에서도 제외한다.
 
 ### 5.7 intent 검증
 

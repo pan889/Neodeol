@@ -231,7 +231,7 @@ PROVINCE_TABLE: Final = (
 
 
 _EXCLUDED_FROM_HASH: Final = frozenset(
-    {"SIM_VERSION", "PROTOCOL_VERSION", "PROVISIONAL", "TRIG_TABLE_PATH"}
+    {"SIM_VERSION", "PROTOCOL_VERSION", "PROVISIONAL", "TRIG_TABLE_PATH", "RESYNC_PER_TURN"}
 )
 
 
@@ -299,4 +299,8 @@ def compute_sim_version() -> str:
 SIM_VERSION: Final = compute_sim_version()
 
 #: 와이어 프로토콜 버전. 메시지 구조가 바뀌면 손으로 올린다 (netcode.md).
+#: 좌석 하나가 한 턴에 받을 수 있는 `fullState` 횟수. 절대 규칙 4 의 복구 경로 예산.
+#: 와이어 정책이라 규칙 지문에는 안 들어간다 — 값이 달라도 같은 게임을 계산한다.
+RESYNC_PER_TURN: Final = 2
+
 PROTOCOL_VERSION: Final = 3
