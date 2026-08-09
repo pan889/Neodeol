@@ -329,16 +329,13 @@
 <div id="modal"><div id="mbox"></div></div>
 
 <!-- [SIM] — 순서 중요 -->
-<script src="../sandbox/automaton.js"></script>
-<script src="../sandbox/lab.js"></script>
-<script src="sim.js"></script>
-<script src="weapons.js"></script>
-<script src="match.js"></script>
 <script src="../multiplayer/msgpack.js"></script>
 <script type="module">
 "use strict";
 import * as CanonTerrain from "../multiplayer/sim/terrain.js";
 import * as CanonPhys from "../multiplayer/sim/ballistics.js";
+import * as CanonMapgen from "../multiplayer/sim/mapgen.js";
+import { aiIntent, aiShop } from "./ai.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
 import * as CanonTrig from "../multiplayer/sim/trig.js";
@@ -365,12 +362,15 @@ import {
    ═══════════════════════════════════════════════════════════════════════════ */
 const NETWORK_MODE = new URLSearchParams(location.search).get("multiplayer") === "1";
 if (NETWORK_MODE) document.body.classList.add("net");
-const T = NETWORK_MODE ? CanonTerrain : window.TalusSim;
-const P = NETWORK_MODE ? CanonPhys : window.TalusPhys;
-const Wp = NETWORK_MODE ? CanonWeapons : window.TalusWeapons;
-const M = NETWORK_MODE ? CanonMatch : window.TalusMatch;
-const L = window.TalusLab;
-const hash32 = NETWORK_MODE ? CanonInt.hash32 : T.hash32;
+/* **로컬 핫시트도 생성 사본을 쓴다.** 예전에는 `tools/prototype/` 안에 손으로 쓴
+   sim.js · weapons.js · match.js 사본이 따로 있어서 차체 경사 로직이 4벌이었고,
+   그 사본만 대조 검사가 없었다 — 프로토타입만 옛 규칙으로 도는 것을 아무도 못 잡는다.
+   지금은 TS → 생성 사본 하나이고 `build-browser-sim.mjs --check` 가 상시 대조한다. */
+const T = CanonTerrain;
+const P = CanonPhys;
+const Wp = CanonWeapons;
+const M = CanonMatch;
+const hash32 = CanonInt.hash32;
 const W = T.W, H = T.H, grid = T.grid, EMPTY = T.EMPTY;
 const CELL = P.CELL_SUBPX, CSH = P.CELL_SHIFT;
 const $ = (id) => document.getElementById(id);
@@ -877,9 +877,7 @@ async function bootNetwork() {
     G.phase = "LOBBY";
     return;
   }
-  const [version, trigResponse] = await Promise.all([fetchVersion(), fetch("/tables/trig.bin")]);
-  if (!trigResponse.ok) throw new Error(`trig.bin HTTP ${trigResponse.status}`);
-  CanonTrig.loadTrig(new Uint8Array(await trigResponse.arrayBuffer()));
+  const version = await fetchVersion();   // trig 는 boot() 가 이미 적재했다
   N.version = version;
   N.mySlot = N.session.slot;
   $("hdr").textContent = "Authoritative lockstep battle";
@@ -909,24 +907,22 @@ async function bootNetwork() {
 
 /* ══════════════════ 매치 시작 ══════════════════ */
 function newMatch() {
-  T.CFG.seed = G.seed;                       // 맵 생성은 mapSeed 로
-  L.loadPreset("hills");
-  L.settleHeadless(60000);                   // 생성 직후 안정화 (decisions.md B1-6)
+  /* 맵도 스폰도 **정규 생성기**를 쓴다 (`docs/mapgen.md`). 예전에는 샌드박스 프리셋
+     `hills` 를 썼는데, 그러면 로컬에서 보는 지형이 실제 매치의 지형이 아니었다 —
+     지질 구역도 스폰 선택도 프로토타입에만 없었다. */
+  T.CFG.seed = G.seed;
+  T.grid.set(CanonMapgen.buildMap(G.seed));
+  T.connectivity(); T.markAll(); T.setStep(0);
+  for (let s = 0; s < 40000; s++) if (T.step().mobile === 0) break;
 
   const n = G.cfgPlayers.length;
-  const maxR = measureMaxRange();
-  /* 스폰 간격은 맵 폭의 2/3 안에 균등 배치. 사거리(≈맵 폭) 안이라 서로 닿는다 (B12) */
-  const span = 1280, left = (1920 - span) / 2;
-  G.spawnXs = [];
-  for (let i = 0; i < n; i++) {
-    const px = n === 1 ? 960 : left + span * i / (n - 1);
-    G.spawnXs.push(Math.round(px * 16));
-  }
+  G.spawnCells = CanonMapgen.chooseSpawnCells(T.grid, n);
+  G.spawnXs = G.spawnCells.map((cell) => cell * P.CELL_SUBPX);
   G.players = [];
   for (let i = 0; i < n; i++) {
     G.players.push(M.makePlayer(i, NAMES[i], G.cfgPlayers[i].ai, G.spawnXs[i]));
   }
-  M.beginRound(G.players, G.spawnXs);
+  M.beginRound(G.players, G.spawnCells, 0);
   G.round = 1; G.turnNo = 0; G.roundTurn = 0; G.cur = 0; G.wind = 0; G.windDelta = 0;
   G.trails.length = 0; G.legs = []; G.flightTracks = []; G.dets = [];
   G.flightTick = 0; G.flightEnd = 0; G.flightStartedAt = 0; G.flightDuration = 0;
@@ -935,7 +931,7 @@ function newMatch() {
   resetPresentation(G.seed);
   renderAll = true;
   $("oRound").textContent = G.round;
-  log(`<em>새 매치</em> — ${n}인 · 시드 0x${G.seed.toString(16).toUpperCase()} · 최대 사거리 ${maxR}px`);
+  log(`<em>새 매치</em> — ${n}인 · 시드 0x${G.seed.toString(16).toUpperCase()} · 최대 사거리 ${measureMaxRange()}px`);
   beginTurn();
 }
 
@@ -959,7 +955,7 @@ function beginTurn() {
     pl = G.players[G.cur];
   }
   if (pl.isAI) {
-    pl.intent = M.aiIntent(G.players, pl, G.wind, G.turnNo, G.seed, G.aiLevel);
+    pl.intent = aiIntent(G.players, pl, G.wind, G.turnNo, G.seed, G.aiLevel);
     G.aiFireAt = performance.now() + 1100;
   } else {
     G.aiFireAt = 0;
@@ -1130,7 +1126,7 @@ function endRound(out) {
   /* AI 상점을 먼저 처리하고 사람에게 상점을 띄운다 */
   for (const pl of G.players) {
     if (!pl.isAI) continue;
-    const b = M.aiShop(pl, G.seed, G.round);
+    const b = aiShop(pl, G.seed, G.round);
     if (b.length) log(`  ${pl.name} 구매: ${b.join(", ")}`);
   }
   G.round++;
@@ -1141,7 +1137,12 @@ function endRound(out) {
 const humansConfigured = () => G.cfgPlayers.some((c) => !c.ai);
 
 function startNextRound() {
-  M.beginRound(G.players, G.spawnXs);
+  /* 지형은 라운드를 넘어 유지되므로 스폰을 **현재 격자에서 다시 고른다.**
+     회전은 라운드 번호에서 온다 — 자리마다 발밑이 달라 슬롯 고정이면 유불리가 된다
+     (`docs/mapgen.md` §9.1). */
+  G.spawnCells = CanonMapgen.chooseSpawnCells(T.grid, G.players.length);
+  G.spawnXs = G.spawnCells.map((cell) => cell * P.CELL_SUBPX);
+  M.beginRound(G.players, G.spawnCells, G.round - 1);
   G.roundTurn = 0;
   G.cur = (G.round - 1) % G.players.length;
   G.aiFireAt = 0;
@@ -2243,7 +2244,17 @@ function frame() {
 }
 
 /* ══════════════════ 부팅 ══════════════════ */
+/** 삼각표를 적재한다. **`sim/` 은 파일을 안 읽으므로 호출자가 넣어준다** (절대 규칙 1).
+ *  예전에는 네트워크 분기 안에만 있었는데, 로컬 핫시트가 손으로 쓴 사본(자체 런타임 표)을
+ *  쓰던 시절엔 그래도 됐다. 생성 사본으로 통일하면서 로컬도 필요해졌다. */
+async function loadTrigTable() {
+  const response = await fetch("/tables/trig.bin");
+  if (!response.ok) throw new Error(`trig.bin HTTP ${response.status}`);
+  CanonTrig.loadTrig(new Uint8Array(await response.arrayBuffer()));
+}
+
 async function boot() {
+  if (!CanonTrig.trigLoaded()) await loadTrigTable();
   if (NETWORK_MODE) {
     await bootNetwork();
   } else {

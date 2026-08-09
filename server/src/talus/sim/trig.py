@@ -67,7 +67,8 @@ def load_trig(data: bytes | bytearray | memoryview) -> None:
     _SIN, _COS = sin, cos
 
 
-def is_loaded() -> bool:
+def trig_loaded() -> bool:
+    """표가 적재됐는가. TS 쪽 `trigLoaded()` 와 이름을 맞춘다."""
     return _SIN is not None
 
 

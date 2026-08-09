@@ -37,7 +37,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.fixture(autouse=True)
 def _load() -> None:
-    if not trig.is_loaded():
+    if not trig.trig_loaded():
         trig.load_trig(TRIG_BIN.read_bytes())  # type: ignore[union-attr]
 
 

@@ -1,7 +1,9 @@
 # 매치 진행 기준선
 
 Phase 3에서 TypeScript와 Python이 **같은 라운드·턴·경제·승패 결과**를 내기 위한 명세다.
-`tools/prototype/match.js`에서 이미 플레이 가능한 절차를 가져오되, AI는 Phase 6 범위라 제외한다.
+Phase 1 프로토타입(`tools/prototype/match.js`, 지금은 삭제)에서 플레이 가능한 절차를 가져왔다.
+AI 는 규칙이 아니라 **입력 생성기**라 `tools/prototype/ai.js` 에 남겼다 — `intent` 를 만들 뿐이고
+그 다음은 전부 `sim/` 이 정하므로 규칙 지문에도 안 들어간다.
 
 여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 5`의 잠정 기준선이다. 값을 바꾸면
 `MATCH_VERSION`, `server/src/talus/constants.py`, match 골든을 함께 갱신한다.
@@ -87,7 +89,15 @@ wind     = reflect(previousWind + delta, -WIND_MAX, +WIND_MAX)
 ```
 
 - 첫 턴은 `previousWind = 0`에서 시작하며, 이후 **매 턴** 다음 바람을 파생한다.
-- `gentle(roll)`은 나머지 18개 값에서 `-1/0/+1`을 반환한다.
+- `gentle(roll)`의 경계는 아래와 같다. **자리표시자가 아니라 명세다** — 이 표가 없으면
+  문서만 보고 재구현할 수 없고, 재구현이 안 되면 두 언어가 갈라져도 판정할 근거가 없다.
+
+  | `roll` | 1~7 | 8~11 | 12~18 |
+  |---|---:|---:|---:|
+  | `delta` | `-1` | `0` | `+1` |
+
+  좌우 대칭(7:7)이고 **멈춰 있는 것은 20%뿐**이다. 바람이 계속 움직여야 직전 발의 학습이
+  그대로 반복되지 않는다 — `game-design.md` §2 가 바람을 불확실성의 첫 겹으로 둔 이유다.
 - 전체의 90%는 완만한 변화, 10%는 `±3` 돌풍이다.
 - `reflect`는 `±WIND_MAX`를 넘은 만큼 경계 안쪽으로 되돌린다. 실제 턴 변화량은 최대 3이다.
 - 각 턴의 정착 시작 전에 `terrain.seed = turnSeed`, `terrain.step = 0`으로 둔다.

@@ -19,7 +19,7 @@ _LOADED_TRIG_PATH: str | None = None
 
 def _ensure_trig(path: str) -> None:
     global _LOADED_TRIG_PATH
-    if _LOADED_TRIG_PATH == path and trig.is_loaded():
+    if _LOADED_TRIG_PATH == path and trig.trig_loaded():
         return
     trig.load_trig(Path(path).read_bytes())
     _LOADED_TRIG_PATH = path

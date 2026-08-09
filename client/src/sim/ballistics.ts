@@ -1,7 +1,8 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    Talus — 탄도 · 탱크   docs/simulation.md §2 §4 §5 §6
 
-   `tools/prototype/sim.js` 의 정수 이식이다. Phase 2 에서 실제로 없앤 float:
+   Phase 1 프로토타입 탄도(`tools/prototype/sim.js`, 지금은 삭제)의 정수 이식이다.
+   프로토타입은 이제 이 파일에서 생성한 사본을 쓴다. Phase 2 에서 실제로 없앤 float:
 
      · 런타임 `Math.sin/cos` → `tables/trig.bin` (§3)
      · `Math.floor(a / b)`   → `intmath.floorDiv` (§4.3 의 유일한 예외)

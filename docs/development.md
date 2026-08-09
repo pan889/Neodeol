@@ -12,7 +12,7 @@
 | 것 | 어디 | 무엇 | URL |
 |---|---|---|---|
 | 모래 자동자 샌드박스 | `tools/sandbox/` | Phase 0. 자동자를 손으로 만져보는 하네스 | `/sandbox/` |
-| Canvas 전장 | `tools/prototype/` | 로컬 핫시트와 Phase 4 권위 lockstep 재생 | `/tools/prototype/`, `/tools/prototype/?multiplayer=1` |
+| Canvas 전장 | `tools/prototype/` | 로컬 핫시트와 Phase 4 권위 lockstep 재생. **양쪽 다 생성 사본을 쓴다** | `/tools/prototype/`, `/tools/prototype/?multiplayer=1` |
 | 멀티 네트워크 하네스 | `tools/multiplayer/` | Phase 4. 코드형 룸·WebSocket·재접속 검증 | `/tools/multiplayer/` |
 | 탄도 검산기 | `tools/ballistics-check.mjs` | `simulation.md` §8 표를 재생성 | — |
 | 클라이언트 sim | `client/src/sim/` | Phase 2. 정수 TS 이식. **부동소수점 0개** | — |
