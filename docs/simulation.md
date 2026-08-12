@@ -496,12 +496,17 @@ vx  = vy = (312 * 2896) >> 12 = 220 subpx/tick
       실측 1,899 px = 맵 폭의 98.9% 이고 Python·TS 가 같은 값을 낸다. §8.1, `decisions.md` C3
 - [x] `WIND_MAX = 4` — 직접 플레이 강풍 기준. 현재 수치 상시 표시 + 드문 돌풍. §8.2, `decisions.md` C4
 - [ ] 발사점이 지형에 파묻혔을 때 처리 — §4.1 (`BARREL_LEN=160`은 확정)
-- [ ] `DAMAGE_SHIFT` 와 무기별 `blastRadius` 의 2의 거듭제곱 제약 — §5.1, `decisions.md` C1
+- [x] `DAMAGE_SHIFT` 와 `blastRadius` 의 2의 거듭제곱 제약 — `damageShift` 를 따로 저장하지 않고
+      `blastRadius` 에서 파생하며, 2의 거듭제곱이 아니면 생성 시점에 던진다 (`weapons.shiftOf`).
+      두 값을 따로 두면 어긋날 수 있다. `decisions.md` C1
 - [ ] 서브스텝 이동량 하한 (`steps` 식 수정 여부) — §4.3
 - [ ] 탱크가 경사에서 미끄러지는가 — §6.1 vs `game-design.md` §8.1, `decisions.md` B5
 - [x] 탱크 이동·아이템 사용 — 발사 전 슬롯 순 이동, `intent.moveDx/useShield`. `docs/match.md` §5
-- [ ] 순차 턴 모드를 지원하는가 — §7, `decisions.md` C7
+- [x] 순차 턴 — **표준 규칙으로 확정**됐다 (`decisions.md` B14·C7). 별도 동시 모드는 MVP 밖
 - [ ] 폭발 넉백의 존재 여부 — §5.2 의 근거 문장이 넉백을 전제하는데 규칙이 어디에도 없다
-- [ ] 매몰 판정 임계값(80%)과 지속 피해량
-- [ ] 낙하 피해 계수 (`FALL_DAMAGE_NUM`, `FALL_DAMAGE_SHIFT`)
+- [ ] 매몰 판정 임계값(`800‰`)과 지속 피해량(`6`) — **값만 잠정**이다.
+      구조는 확정됐다: 재배치의 밀어올리기가 같은 임계를 쓰고 턴당 `BURIAL_RELIEF_CELLS` 만큼
+      완화해 유한 턴에 반드시 풀린다 (`decisions.md` B13, `match.md` §5 step 9)
+- [ ] 낙하 피해 계수 (`FALL_DAMAGE_NUM`, `FALL_DAMAGE_SHIFT`) — **값만 잠정**.
+      원인을 가리지 않는다는 규칙은 확정됐다 (`match.md` §5.1)
 - [ ] 탱크끼리의 충돌 처리 — 현재는 서로 통과. 겹쳐 앉을 수 있는데 그대로 둘지
