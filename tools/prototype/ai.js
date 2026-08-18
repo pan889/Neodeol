@@ -91,11 +91,11 @@ function pickTarget(players, me) {
 /* 무기 선택 — 탄약이 있는 것 중에서 상황에 맞는 것을 고른다 */
 function pickWeapon(me, target, h) {
   var cands = [];
-  if (target.hp <= 40 && ammoOf(me, 5) > 0) cands.push(5);        // 성형탄으로 마무리
-  if (ammoOf(me, 1) > 0) cands.push(1);                           // 파쇄탄
-  if (ammoOf(me, 4) > 0) cands.push(4);                           // 전복탄
-  if (ammoOf(me, 2) > 0) cands.push(2);                           // 분열탄
-  if (ammoOf(me, 3) > 0) cands.push(3);                           // 굴착탄
+  if (target.hp <= 40 && M.ammoOf(me, 5) > 0) cands.push(5);        // 성형탄으로 마무리
+  if (M.ammoOf(me, 1) > 0) cands.push(1);                           // 파쇄탄
+  if (M.ammoOf(me, 4) > 0) cands.push(4);                           // 전복탄
+  if (M.ammoOf(me, 2) > 0) cands.push(2);                           // 분열탄
+  if (M.ammoOf(me, 3) > 0) cands.push(3);                           // 굴착탄
   if (!cands.length) return 0;
   /* 절반은 표준탄을 쓴다 — 아껴 쓰는 인상을 준다 */
   if (((h >>> 16) & 1) === 0) return 0;
@@ -110,11 +110,11 @@ function aiShop(pl, seed, roundNo) {
   for (var pass = 0; pass < 3; pass++) {
     for (var i = 0; i < order.length; i++) {
       var wid = order[(i + (h >>> (pass * 3))) % order.length];
-      if (buyWeapon(pl, wid)) bought.push(Wp.byId(wid).name);
+      if (M.buyWeapon(pl, wid)) bought.push(Wp.byId(wid).name);
     }
   }
-  if (pl.items.parachute === 0) { if (buyItem(pl, "parachute")) bought.push("낙하산"); }
-  if (pl.items.shield === 0) { if (buyItem(pl, "shield")) bought.push("차폐막"); }
+  if (pl.items.parachute === 0) { if (M.buyItem(pl, "parachute")) bought.push("낙하산"); }
+  if (pl.items.shield === 0) { if (M.buyItem(pl, "shield")) bought.push("차폐막"); }
   return bought;
 }
 
