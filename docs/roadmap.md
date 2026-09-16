@@ -320,6 +320,9 @@ Canvas 수직 슬라이스는 서버 `turnResolve`만 재생하고, 최종 지�
 
 ## Phase 5 — 아트 (7~10일)
 
+**선행 UI 패스:** 싱글 작전실·AI 작전 3개·조작 안내·브라우저별 완료 전적, 하단 사격 HUD,
+자체 SVG 협곡 키아트와 Canvas 원경·지층 명암을 구현했다. 아래 WebGL2 완료 조건과는 구분한다.
+
 `docs/rendering.md`를 최종 구현한다. **Phase 4까지는 Phase 3.5의 Canvas 감성 패스로 버틴다.**
 
 - WebGL2 렌더러 전면 교체

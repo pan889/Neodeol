@@ -62,7 +62,7 @@ async def test_sandbox_is_served(client: httpx.AsyncClient) -> None:
 async def test_prototype_is_linked_and_served(client: httpx.AsyncClient) -> None:
     """로컬 Docker 첫 화면에서 플레이어블 프로토타입으로 바로 들어갈 수 있다."""
     async with client as c:
-        root = await c.get("/")
+        root = await c.get("/dev")
         prototype = await c.get("/tools/prototype/")
     if prototype.status_code == 404:
         pytest.skip("NEODEOL_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
@@ -75,7 +75,7 @@ async def test_prototype_is_linked_and_served(client: httpx.AsyncClient) -> None
 async def test_multiplayer_harness_is_linked_and_served(client: httpx.AsyncClient) -> None:
     """Phase 4 네트워크 하네스를 로컬 첫 화면에서 바로 열 수 있다."""
     async with client as c:
-        root = await c.get("/")
+        root = await c.get("/dev")
         multiplayer = await c.get("/tools/multiplayer/")
     if multiplayer.status_code == 404:
         pytest.skip("NEODEOL_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
@@ -91,3 +91,24 @@ async def test_trig_table_is_served_for_browser_lockstep(client: httpx.AsyncClie
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("application/octet-stream")
     assert len(response.content) == 7204
+
+
+async def test_root_opens_game_or_dev_fallback(client: httpx.AsyncClient) -> None:
+    async with client as connection:
+        response = await connection.get("/")
+    assert response.status_code == 307
+    assert response.headers["location"] in ("/tools/prototype/", "/dev")
+
+
+async def test_singleplayer_interface_assets(client: httpx.AsyncClient) -> None:
+    async with client as connection:
+        page = await connection.get("/tools/prototype/")
+        if page.status_code == 404:
+            pytest.skip("NEODEOL_STATIC_DIR does not point at tools")
+        for asset in ("interface.css", "base.css", "operations.js", "canyon.svg"):
+            response = await connection.get(f"/tools/prototype/{asset}")
+            assert response.status_code == 200
+            assert len(response.content) > 100
+    assert 'id="homeScreen"' in page.text
+    assert 'id="bQuickPlay"' in page.text
+    assert 'id="battleGuide"' in page.text

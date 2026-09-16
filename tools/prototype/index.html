@@ -3,258 +3,46 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Neodeol — 프로토타입</title>
-<style>
-  :root{
-    --ink:#E8DFD2; --muted:#9A8F7F; --dim:#6E6478;
-    --panel:#17141C; --panel2:#221D29; --panel3:#2B2431; --line:#3A3243;
-    --accent:#3DDCFF; --warn:#FF3D9E; --ok:#B4FF3D; --gold:#D99A5B;
-    --blast:#FFF4E0; --crust:#4A4038;
-  }
-  *{box-sizing:border-box; margin:0; padding:0}
-  html,body{height:100%}
-  body{background:radial-gradient(circle at 62% 40%,#211823 0,#100D14 58%,#08070A 100%);
-       color:var(--ink); overflow:hidden; font-size:12px;
-       font-family:ui-sans-serif,-apple-system,"Pretendard","Apple SD Gothic Neo",system-ui,sans-serif}
-  #app{display:grid; grid-template-columns:272px minmax(0,1fr); height:100vh; gap:1px; background:#332A39}
-  aside{background:linear-gradient(180deg,#1B1720 0,#141118 100%); overflow-y:auto; padding:14px 13px 44px}
-  #controls{position:relative; z-index:10; border-right:1px solid #3D3444; box-shadow:12px 0 32px #0007}
-  #devPanel{position:fixed; z-index:45; top:0; right:0; width:238px; height:100vh;
-            transform:translateX(102%); transition:transform .22s ease; border-left:1px solid var(--line);
-            box-shadow:-20px 0 42px #000A}
-  #app.dev-open #devPanel{transform:translateX(0)}
-  main{background:#09080B; display:flex; flex-direction:column; min-width:0; overflow:hidden}
-
-  h1{font-family:ui-monospace,"Martian Mono",monospace; font-size:16px; line-height:1;
-     letter-spacing:.2em; text-transform:uppercase; color:var(--accent); text-shadow:0 0 18px #3DDCFF33}
-  h1 small{display:block; letter-spacing:.1em; text-transform:uppercase; color:#74697C; font-size:8.5px; margin-top:6px}
-  h2{display:flex; justify-content:space-between; align-items:baseline; font-size:9px; letter-spacing:.16em;
-     text-transform:uppercase; color:var(--muted); margin:15px 0 7px; padding-bottom:5px;
-     border-bottom:1px solid #352D3B}
-
-  .row{display:flex; gap:5px; flex-wrap:wrap; margin-bottom:6px}
-  button{font:inherit; font-size:11px; color:var(--ink); background:linear-gradient(180deg,#2A2331,#201B26);
-         border:1px solid #403747; border-radius:4px; padding:6px 8px; cursor:pointer; flex:1 1 auto;
-         box-shadow:inset 0 1px #FFFFFF08; transition:background .12s,border-color .12s,transform .08s}
-  button:hover:not(:disabled){background:linear-gradient(180deg,#352C3D,#292130); border-color:#5A4D63}
-  button:active:not(:disabled){transform:translateY(1px)}
-  button:disabled{opacity:.34; cursor:default}
-  button.on{background:var(--accent); border-color:#8BEAFF; color:#0C0A11; font-weight:700; box-shadow:0 0 16px #3DDCFF2E}
-  button.wide{flex-basis:100%}
-  button.fire{display:flex; justify-content:center; align-items:center; gap:10px; min-height:44px;
-              background:linear-gradient(180deg,#FF579F,#D92A78); border-color:#FF80B8; color:#170913;
-              font-family:ui-monospace,"Martian Mono",monospace; font-size:13px; letter-spacing:.08em;
-              font-weight:900; text-transform:uppercase; box-shadow:0 0 22px #FF3D9E26,inset 0 1px #FFFFFF55}
-  button.fire small{font-size:8px; letter-spacing:.08em; opacity:.58}
-  button.fire:hover:not(:disabled){background:linear-gradient(180deg,#FF78B2,#ED3D8B); border-color:#FFD0E4}
-  button.fire:disabled{background:var(--panel2); border-color:var(--line); color:#6E6478; font-weight:500; box-shadow:none}
-
-  .p{margin-bottom:7px}
-  .p label{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:2px; gap:6px}
-  .p .nm{color:#B8AC9A; font-size:10px}
-  .p .vl{font-family:ui-monospace,"Martian Mono",monospace; font-variant-numeric:tabular-nums; font-size:11px}
-  .p input[type=range]{width:100%; height:16px; -webkit-appearance:none; background:transparent; cursor:pointer}
-  .p input[type=range]::-webkit-slider-runnable-track{height:3px; background:var(--line); border-radius:2px}
-  .p input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:11px; height:11px; margin-top:-4px; border-radius:50%; background:var(--gold)}
-  .p .hint{color:var(--dim); font-size:9.5px; margin-top:1px; line-height:1.35}
-  .chk{display:flex; align-items:center; gap:7px; margin-bottom:6px; color:#B8AC9A; cursor:pointer; font-size:10.5px}
-  .chk input{accent-color:var(--accent)}
-
-  #wrap{flex:1; display:flex; align-items:center; justify-content:center; padding:12px; min-height:0; overflow:hidden;
-        background:radial-gradient(circle at 50% 45%,#1A141A 0,#08070A 72%)}
-  #stage{position:relative; isolation:isolate; overflow:hidden; aspect-ratio:16/9; width:1440px;
-         max-width:100%; max-height:100%; background:#231B25; cursor:crosshair; touch-action:none;
-         border:1px solid #5B4652; box-shadow:0 0 0 1px #080609,0 18px 60px #000D,0 0 80px #D99A5B0B;
-         will-change:transform; transform:translateZ(0)}
-  canvas{position:absolute; inset:0; width:100%; height:100%; display:block}
-  #ter{z-index:1} #ovl{z-index:2; pointer-events:none}
-  #stage::before{content:""; position:absolute; inset:0; z-index:3; pointer-events:none;
-                 background:radial-gradient(ellipse at center,transparent 52%,#0B080D55 78%,#050407CC 100%)}
-  #stage::after{content:""; position:absolute; inset:0; z-index:4; pointer-events:none; opacity:.16;
-                background-image:repeating-linear-gradient(0deg,#FFFFFF08 0,#FFFFFF08 1px,transparent 1px,transparent 3px),
-                                 repeating-linear-gradient(97deg,transparent 0,transparent 5px,#00000012 6px)}
-
-  #combatHud{position:absolute; inset:0; z-index:5; pointer-events:none;
-             font-family:ui-monospace,"Martian Mono",monospace; font-variant-numeric:tabular-nums}
-  #playerStrip{position:absolute; top:12px; left:12px; right:12px; display:flex; justify-content:space-between; gap:7px}
-  .hud-player{min-width:104px; max-width:162px; flex:1; padding:6px 8px 7px; color:#B8AC9A;
-              background:linear-gradient(180deg,#141019CC,#0D0B10AA); border:1px solid #5A4B56AA;
-              box-shadow:0 5px 18px #0008; clip-path:polygon(0 0,calc(100% - 8px) 0,100% 8px,100% 100%,8px 100%,0 calc(100% - 8px))}
-  .hud-player.turn{border-color:var(--team); box-shadow:0 0 18px color-mix(in srgb,var(--team) 22%,transparent)}
-  .hud-player.dead{opacity:.28; filter:grayscale(1)}
-  .hud-player .top{display:flex; justify-content:space-between; gap:5px; font-size:9px; letter-spacing:.07em}
-  .hud-player .top strong{color:var(--team); font-weight:700}
-  .hud-player .hp{height:3px; margin-top:5px; background:#312936; overflow:hidden}
-  .hud-player .hp i{display:block; height:100%; background:var(--team); box-shadow:0 0 8px var(--team)}
-  #phaseHud{position:absolute; top:57px; left:50%; transform:translateX(-50%); padding:4px 9px;
-            color:#B8AC9A; background:#0D0A10A8; border:1px solid #594B55AA; font-size:8px;
-            letter-spacing:.16em; text-transform:uppercase}
-  #announce{position:absolute; top:23%; left:50%; min-width:280px; padding:11px 24px 10px;
-            transform:translate(-50%,-8px) scale(.97); text-align:center; opacity:0;
-            color:var(--announce,var(--accent)); background:linear-gradient(90deg,transparent,#0E0A10E8 18%,#0E0A10E8 82%,transparent);
-            border-top:1px solid color-mix(in srgb,var(--announce,var(--accent)) 65%,transparent);
-            border-bottom:1px solid color-mix(in srgb,var(--announce,var(--accent)) 30%,transparent);
-            text-shadow:0 0 16px color-mix(in srgb,var(--announce,var(--accent)) 45%,transparent);
-            transition:opacity .16s,transform .2s}
-  #announce.on{opacity:1; transform:translate(-50%,0) scale(1)}
-  #announce b{display:block; font-size:18px; letter-spacing:.18em; text-transform:uppercase}
-  #announce small{display:block; margin-top:4px; color:#B8AC9A; font-size:8px; letter-spacing:.12em}
-  .readout{position:absolute; bottom:76px; min-width:188px; padding:8px 10px;
-           background:linear-gradient(180deg,#151019D9,#0A080CDD); border:1px solid #594B56AA;
-           box-shadow:0 8px 24px #0009; backdrop-filter:blur(2px)}
-  #aimHud{left:14px} #weaponHud{right:14px; text-align:right}
-  .readout .label{display:block; color:#817687; font-size:7.5px; letter-spacing:.17em; text-transform:uppercase}
-  .readout .value{display:inline-block; margin-top:2px; color:var(--ink); font-size:21px; line-height:1; letter-spacing:.02em}
-  .readout .minor{color:var(--gold); font-size:10px; margin-left:8px}
-  #weaponHud .value{font-size:15px; color:var(--accent); letter-spacing:.06em}
-
-  #powerChargeHud{position:absolute; z-index:7; left:8%; right:8%; bottom:15px; height:49px; padding:6px 10px 8px;
-    pointer-events:auto; user-select:none; background:linear-gradient(180deg,#161119EE,#09070BDD);
-    border:1px solid #594B56CC; box-shadow:0 8px 28px #000B,0 0 24px #3DDCFF10; backdrop-filter:blur(3px);
-    clip-path:polygon(0 0,calc(100% - 10px) 0,100% 10px,100% 100%,10px 100%,0 calc(100% - 10px));
-    transition:opacity .16s,border-color .16s,box-shadow .16s}
-  #powerChargeHud.locked{opacity:.42; filter:saturate(.55)}
-  #powerChargeHud.active{border-color:#D99A5B; box-shadow:0 8px 28px #000B,0 0 26px #D99A5B38}
-  #powerChargeHud.reached{border-color:#FF80B8; box-shadow:0 8px 28px #000B,0 0 30px #FF3D9E4A}
-  .chargeMeta{display:flex; align-items:baseline; gap:9px; height:15px; color:#817687;
-    font:7.5px/1 ui-monospace,"Martian Mono",monospace; letter-spacing:.13em; text-transform:uppercase}
-  .chargeMeta b{margin-left:auto; color:#FFF4E0; font-size:12px; letter-spacing:.05em}
-  .chargeMeta em{color:#D99A5B; font-style:normal; font-size:8px}
-  #powerChargeHud.reached .chargeMeta em{color:#FF80B8; text-shadow:0 0 10px #FF3D9E}
-  #chargeMeter{position:relative; height:20px; border:1px solid #514656; border-radius:3px; background:#09070B;
-    box-shadow:inset 0 0 14px #000C; cursor:ew-resize; touch-action:none; outline:none}
-  #chargeMeter:focus-visible{border-color:var(--accent); box-shadow:0 0 0 1px #3DDCFF66,inset 0 0 14px #000C}
-  #chargeMeter::after{content:""; position:absolute; inset:0; z-index:2; pointer-events:none; opacity:.38;
-    background:repeating-linear-gradient(90deg,transparent 0,transparent calc(10% - 1px),#E8DFD255 calc(10% - 1px),#E8DFD255 10%)}
-  #chargeMeter i{position:absolute; z-index:1; inset:0 auto 0 0; width:0; border-radius:2px;
-    background:linear-gradient(90deg,#3DDCFF,#B4FF3D 58%,#FFD36A 82%,#FF3D9E);
-    box-shadow:0 0 18px #3DDCFF77; transition:width .035s linear; pointer-events:none}
-  #chargePin{position:absolute; z-index:3; top:-5px; bottom:-5px; left:60%; width:2px; transform:translateX(-1px);
-    background:#FFF4E0; box-shadow:0 0 8px #FFF4E0; pointer-events:none; transition:left .08s ease,background .12s}
-  #chargePin::before{content:""; position:absolute; top:-4px; left:50%; transform:translateX(-50%);
-    border-left:6px solid transparent; border-right:6px solid transparent; border-top:7px solid #FFF4E0;
-    filter:drop-shadow(0 0 4px #FFF4E0)}
-  #powerChargeHud.reached #chargePin{background:#FF3D9E; box-shadow:0 0 13px #FF3D9E}
-  #powerChargeHud.reached #chargePin::before{border-top-color:#FF3D9E; filter:drop-shadow(0 0 5px #FF3D9E)}
-
-  #bar{display:flex; gap:17px; align-items:center; min-height:36px; padding:6px 13px; border-top:1px solid #3A303B;
-       background:linear-gradient(180deg,#19151D,#100D13); font-family:ui-monospace,"Martian Mono",monospace;
-       font-variant-numeric:tabular-nums; font-size:11px; flex-wrap:wrap; box-shadow:0 -10px 24px #0005}
-  #bar b{color:#74697C; font-weight:400; letter-spacing:.1em; text-transform:uppercase; font-size:8px; margin-right:4px}
-  #bar .big{font-size:14px; color:var(--gold)}
-
-  .aim{display:grid; grid-template-columns:44px 1fr; gap:5px 8px; align-items:center; margin-bottom:8px}
-  .aim span{color:#8A8175; font-size:9px; letter-spacing:.1em; text-transform:uppercase}
-  .aim input{width:100%; background:#100D13; border:1px solid #413748; border-radius:3px;
-             color:var(--ink); padding:6px 7px; font-family:ui-monospace,"Martian Mono",monospace;
-             font-variant-numeric:tabular-nums; font-size:14px; outline:none}
-  .aim input:focus{border-color:var(--accent); box-shadow:0 0 0 1px #3DDCFF33}
-
-  .wsel{display:flex; flex-direction:column; gap:4px; margin-bottom:7px}
-  .wsel button{display:block; text-align:left; padding:6px 8px; flex:none}
-  .wsel button>div{align-items:center}
-  .wsel button i{font-style:normal; font-family:ui-monospace,monospace; color:#8A8175; font-size:10px}
-  .wsel button.on i{color:#0C0A11}
-  .wsel .d{display:block; color:#6E6478; font-size:8.5px; margin-top:2px; line-height:1.3}
-  .wsel button.on .d{color:#0C0A11; opacity:.72}
-  .wsel button.nuclear:not(.on),.shopgrid button.nuclear{border-color:#80532E;
-    background:linear-gradient(135deg,#2B1A16,#171116 62%); box-shadow:inset 3px 0 #FFB33D55}
-  .wsel button.nuclear:not(.on)>div span:first-child,.shopgrid button.nuclear .t span{color:#FFD36A}
-  .wsel button.nuclear.on{background:linear-gradient(135deg,#FFD36A,#E88A34); border-color:#FFE5A6; box-shadow:0 0 22px #FFB33D42}
-
-  .pcard{padding:6px 7px; border:1px solid #372F3D; border-radius:4px; margin-bottom:5px; background:#100D14}
-  .pcard.turn{border-color:var(--accent); background:#122029; box-shadow:0 0 13px #3DDCFF12}
-  .pcard.dead{opacity:.35}
-  .pcard .nm{display:flex; justify-content:space-between; font-size:11px; align-items:baseline}
-  .pcard .sub{display:flex; justify-content:space-between; color:#8A8175; font-size:9px;
-              font-family:ui-monospace,monospace; margin-top:3px}
-  .hpbar{height:4px; background:#2A2432; border-radius:2px; overflow:hidden; margin-top:4px}
-  .hpbar i{display:block; height:100%; transition:width .2s}
-
-  #log{margin-top:6px; font-family:ui-monospace,"Martian Mono",monospace; font-size:9.5px; line-height:1.55;
-       color:#9A8F7F; max-height:128px; overflow-y:auto; background:#0E0B11; border:1px solid #342C3A;
-       border-radius:3px; padding:6px; white-space:pre-wrap}
-  #log b{color:var(--ok); font-weight:400} #log i{color:var(--warn); font-style:normal}
-  #log em{color:var(--accent); font-style:normal} #log u{color:var(--gold); text-decoration:none}
-  .note{color:#6E6478; font-size:9px; line-height:1.55; margin:6px 0 8px}
-  kbd{background:var(--panel2); border:1px solid var(--line); border-bottom-width:2px; border-radius:3px;
-      padding:0 3px; font-family:ui-monospace,monospace; font-size:9px; color:#B8AC9A}
-  #modal{position:fixed; inset:0; background:#08060CEB; display:none; align-items:center;
-         justify-content:center; z-index:60; padding:20px; backdrop-filter:blur(7px)}
-  #modal.on{display:flex}
-  #mbox{background:linear-gradient(180deg,#211A26,#151119); border:1px solid #5A4A58; border-radius:5px;
-        padding:22px 24px; max-width:820px; width:100%; max-height:90vh; overflow-y:auto;
-        box-shadow:0 28px 90px #000E,0 0 48px #3DDCFF0B}
-  #mbox h3{font-family:ui-monospace,"Martian Mono",monospace; font-size:16px; letter-spacing:.13em;
-           text-transform:uppercase; color:var(--accent); margin-bottom:6px}
-  #mbox .sub{color:#8A8175; font-size:11px; margin-bottom:16px}
-  .shopgrid{display:grid; grid-template-columns:repeat(auto-fill,minmax(178px,1fr)); gap:8px; margin-bottom:16px}
-  .shopgrid button{display:block; text-align:left; padding:9px 10px; flex:none}
-  .shopgrid .t{display:flex; justify-content:space-between; align-items:baseline; font-size:11.5px}
-  .shopgrid .t u{color:var(--gold); text-decoration:none; font-family:ui-monospace,monospace}
-  .shopgrid .d{color:#6E6478; font-size:9.5px; margin-top:3px; line-height:1.35}
-  .shopgrid .have{font-family:ui-monospace,monospace; color:var(--accent); font-size:10px}
-  table.sc{width:100%; border-collapse:collapse; font-family:ui-monospace,monospace;
-           font-variant-numeric:tabular-nums; font-size:11.5px; margin-bottom:14px}
-  table.sc th{color:#8A8175; font-weight:400; text-align:right; padding:4px 7px; font-size:9.5px;
-              text-transform:uppercase; letter-spacing:.08em; border-bottom:1px solid var(--line)}
-  table.sc th:first-child, table.sc td:first-child{text-align:left}
-  table.sc td{padding:4px 7px; text-align:right}
-  .setrow{display:flex; gap:6px; align-items:center; margin-bottom:6px; font-size:11px}
-  .setrow .sl{width:62px; color:#8A8175; font-family:ui-monospace,monospace}
-  #netStatus{display:none; margin-top:10px; padding:8px 9px; border:1px solid #3D3444; border-left:3px solid var(--accent);
-             background:#0E0C11; font:10px/1.45 ui-monospace,monospace; color:#8A8175}
-  #netStatus b{display:block; color:var(--ok); letter-spacing:.12em; font-size:11px}
-  body.net #netStatus{display:block}
-  body.net #bTuning{display:none}
-
-  @media (max-width:980px){
-    #app{grid-template-columns:228px minmax(0,1fr)}
-    #controls{padding:10px 9px 36px}
-    #playerStrip{gap:3px}.hud-player{min-width:72px;padding:4px 5px}.hud-player .top{font-size:7px}
-    .readout{min-width:145px}.readout .value{font-size:17px}
-    #powerChargeHud{left:4%;right:4%}.chargeMeta{letter-spacing:.07em}
-  }
-  @media (prefers-reduced-motion:reduce){
-    *,*::before,*::after{scroll-behavior:auto!important; transition-duration:.01ms!important; animation-duration:.01ms!important}
-    #stage{will-change:auto}
-  }
-</style>
+<title>Neodeol — 무너지는 전장의 한 발</title>
+<meta name="theme-color" content="#17201c">
+<meta name="description" content="무너지는 지형 위의 턴제 포병전. AI 작전에 도전하고, 한 발로 전장을 바꾸세요.">
+<link rel="stylesheet" href="./interface.css">
 </head>
 <body>
-<div id="app">
-<aside id="controls">
-  <h1>Neodeol<small id="hdr">Field build · gameplay feel pass</small></h1>
+<section id="homeScreen" aria-label="작전실">
+  <nav class="home-nav" aria-label="주 메뉴">
+    <a class="wordmark" href="/" aria-label="Neodeol 홈"><i class="brand-symbol" aria-hidden="true"></i>NEODEOL</a>
+    <div class="home-nav-right"><span class="online-status"><i class="status-dot"></i>싱글플레이 준비 완료</span><a href="/tools/multiplayer/" class="quiet-action" style="text-decoration:none">멀티플레이 ↗</a></div>
+  </nav>
+  <div class="home-content">
+    <div class="home-hero">
+      <span class="eyebrow">TACTICAL ARTILLERY / 너덜</span>
+      <h1>한 발로 바꾸는<br><em>전장의 지형.</em></h1>
+      <p>바람을 읽고, 각도를 재고, 방아쇠를 놓으세요.<br>무너지는 땅 위에서, 마지막 한 발까지.</p>
+      <div class="hero-actions"><button id="bQuickPlay" class="primary-action" disabled>싱글플레이 시작 <span aria-hidden="true">→</span></button><button id="bHomeHelp" class="quiet-action">플레이 방법</button></div>
+      <p class="home-screen-loading" role="status">전장을 준비하고 있습니다…</p>
+    </div>
+    <div class="hero-coordinate" aria-hidden="true">SECTOR 07 / DUST VALLEY<br>35° 12′ N — 128° 04′ E<br>WIND VARIABLE · VISIBILITY LOW</div>
+    <div class="operations-heading"><h2>싱글플레이 작전 <small>SELECT YOUR OPERATION</small></h2><span id="profileSummary" class="profile-summary">작전 기록 불러오는 중</span></div>
+    <div id="operationGrid" class="operation-grid"></div>
+    <footer class="home-footer"><div class="home-footer-links"><button id="bCustomMatch">사용자 설정 매치 ↗</button><button id="bRecords">작전 기록 ↗</button><a href="/tools/multiplayer/">친구와 플레이 ↗</a></div><span id="storageNotice">전적은 이 브라우저에 저장됩니다. 진행 중 매치는 저장되지 않습니다.</span><span class="home-build">INDEPENDENT ARTILLERY / FIELD EDITION</span></footer>
+  </div>
+</section>
+<div id="app" aria-hidden="true" inert>
+<header class="battle-nav">
+  <a class="wordmark" href="/" id="bBrandHome" aria-label="작전실로 이동"><i class="brand-symbol" aria-hidden="true"></i>NEODEOL</a>
+  <div class="battle-location"><span id="hdr">SINGLE PLAYER</span><strong id="battleTitle">첫 번째 섬광</strong></div>
   <div id="netStatus"><b id="netRoom">ROOM ------</b><span id="netConn">연결 준비 중</span></div>
-
-  <h2>조준 <span id="whoTurn" style="color:var(--accent)"></span></h2>
-  <div class="aim">
-    <span>각도</span><input type="number" id="iAngle" min="0" max="180" step="0.1">
-    <span>파워</span><input type="number" id="iPower" min="0" max="1000" step="1">
-    <span>이동</span><input type="number" id="iMove" min="-30" max="30" step="1" value="0">
-  </div>
-  <label class="chk"><input type="checkbox" id="cShield"><span>차폐막 사용 <span id="shieldHave" style="color:#6E6478"></span></span></label>
-  <div class="row"><button id="bFire" class="fire wide"><span>발사 명령</span><small>Space</small></button></div>
-  <div class="note">
-    <kbd>←</kbd><kbd>→</kbd> 각도 · <kbd>↑</kbd><kbd>↓</kbd> 파워 · <kbd>Shift</kbd> 미세<br>
-    전장 클릭/드래그 각도 · 휠 파워 · <kbd>Shift</kbd>+휠 미세<br>
-    하단 파워 바 클릭/드래그 목표 핀 · <kbd>Space</kbd> 누르고 떼서 발사<br>
-    <kbd>1</kbd>~<kbd>8</kbd> 무기 선택
-  </div>
-
-  <h2>무기</h2>
-  <div class="wsel" id="wsel"></div>
-
-  <h2>플레이어</h2>
-  <div id="cards"></div>
-
-  <h2>매치</h2>
-  <div class="row"><button id="bSetup" class="wide">새 매치 설정</button></div>
-  <div class="row"><button id="bScores">점수판</button><button id="bShop">상점</button></div>
-  <div class="row"><button id="bMulti" class="wide">멀티플레이 네트워크</button></div>
-  <div class="row"><button id="bTuning" class="wide">개발 튜닝 패널</button></div>
-  <label class="chk"><input type="checkbox" id="cSound" checked><span>전장 음향</span></label>
-  <div id="log">준비됨.</div>
+  <div class="battle-actions"><label class="sound-toggle"><input type="checkbox" id="cSound" checked><span>음향</span></label><button id="bSetup" class="network-start">매치 시작</button><button id="bHelp" aria-label="플레이 방법">도움말</button><button id="bScores">전황</button><button id="bShop">보급</button><button id="bTuning">개발</button><button id="bHome">작전실</button></div>
+</header>
+<aside id="controls" aria-label="사격 조작부">
+  <section class="aim-controls"><div class="aim-heading"><h2>FIRING SOLUTION</h2><span id="whoTurn"></span></div>
+    <div class="aim"><label for="iAngle">각도 °<input type="number" id="iAngle" min="0" max="180" step="0.1"></label><label for="iPower">파워<input type="number" id="iPower" min="0" max="1000" step="1"></label></div>
+    <div class="support-controls"><label for="iMove">이동<input type="number" id="iMove" min="-30" max="30" step="1" value="0"></label><label class="chk"><input type="checkbox" id="cShield"><span>차폐막 <span id="shieldHave"></span></span></label></div>
+  </section>
+  <section class="weapon-controls"><h2>ARSENAL <span style="color:#859278">/ 무기 선택 · 1—8</span></h2><div class="wsel" id="wsel"></div><p id="weaponDescription" class="weapon-hint">표준탄 · 작은 원형 구덩이. 무한</p></section>
+  <section class="fire-controls"><button id="bFire" class="fire"><span>발사 명령</span><small>SPACE / HOLD & RELEASE</small></button><div class="note">클릭·드래그로 조준<br>스페이스를 누르고 떼서 발사</div></section>
+  <div hidden><button id="bMulti">멀티플레이</button><div id="cards"></div><div id="log">준비됨.</div></div>
 </aside>
 
 <main>
@@ -287,6 +75,7 @@
       </div>
     </div>
   </div></div>
+  <section id="battleGuide" class="battle-guide" aria-label="사격 안내" hidden><button id="bDismissGuide" class="guide-dismiss" aria-label="안내 닫기">×</button><span class="eyebrow">FIELD MANUAL / 사격 입문</span><strong id="guideTitle"></strong><p id="guideBody"></p><div class="guide-controls"><span id="guidePage"></span><button id="bNextGuide">다음 →</button></div></section>
   <div id="bar">
     <span><b>라운드</b><span id="oRound" class="big">1</span><span style="color:#6E6478">/5</span></span>
     <span><b>턴</b><span id="oTurn">1</span></span>
@@ -326,7 +115,7 @@
 </aside>
 </div>
 
-<div id="modal"><div id="mbox"></div></div>
+<div id="modal"><div id="mbox" role="dialog" aria-modal="true" aria-label="작전 메뉴" tabindex="-1"></div></div>
 
 <!-- [SIM] — 순서 중요 -->
 <script src="../multiplayer/msgpack.js"></script>
@@ -336,6 +125,7 @@ import * as CanonTerrain from "../multiplayer/sim/terrain.js";
 import * as CanonPhys from "../multiplayer/sim/ballistics.js";
 import * as CanonMapgen from "../multiplayer/sim/mapgen.js";
 import { aiIntent, aiShop } from "./ai.js";
+import { OPERATIONS, loadProfile, normalizeProfile, recordResult, saveProfile } from "./operations.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
 import * as CanonTrig from "../multiplayer/sim/trig.js";
@@ -406,6 +196,185 @@ const N = {
   serverResult: null, localComplete: null, pendingRoundEnd: null, pendingMatchEnd: null,
   messageQueue: Promise.resolve(), ready: false, status: "offline",
 };
+const SOLO = {
+  home: !NETWORK_MODE, operation: null, recorded: false, guideStep: 0, pausedAt: null,
+  profile: normalizeProfile(null), persistent: false, storage: null, ready: false,
+};
+document.body.classList.toggle("dev-mode", new URLSearchParams(location.search).get("dev") === "1");
+
+const GUIDE = [
+  ["01 — 조준점을 잡으세요", "전장을 클릭하거나 드래그하면 포신이 움직입니다. ← → 키로 각도를 미세하게 맞출 수 있습니다."],
+  ["02 — 나만의 기준을 남기세요", "전장 하단의 파워 바를 눌러 목표 핀을 놓으세요. 핀은 기준점일 뿐, 자동으로 발사하지 않습니다."],
+  ["03 — 누르고, 기다리고, 놓기", "스페이스를 누르면 힘이 차오릅니다. 원하는 파워에서 놓으세요. 숫자를 입력하고 발사 버튼을 눌러도 됩니다."],
+  ["04 — 땅이 멈출 때까지", "착탄 뒤 흙이 흐르고 탱크가 떨어집니다. 이전 궤적과 바람을 보고 다음 발의 각도·파워를 조절하세요."],
+];
+
+function updateGuide() {
+  const step = GUIDE[SOLO.guideStep];
+  $("guideTitle").textContent = step[0];
+  $("guideBody").textContent = step[1];
+  $("guidePage").textContent = `${SOLO.guideStep + 1} / ${GUIDE.length}`;
+  $("bNextGuide").textContent = SOLO.guideStep === GUIDE.length - 1 ? "알겠습니다 ✓" : "다음 →";
+}
+
+function refreshOperations() {
+  const records = Object.values(SOLO.profile.operations);
+  const total = records.reduce((sum, record) => sum + record.completed, 0);
+  const wins = records.reduce((sum, record) => sum + record.wins, 0);
+  $("profileSummary").textContent = `${String(total).padStart(2, "0")}회 완료 / ${String(wins).padStart(2, "0")}승`;
+  $("storageNotice").textContent = SOLO.persistent
+    ? "전적은 이 브라우저에 저장됩니다. 진행 중 매치는 저장되지 않습니다."
+    : "브라우저 저장소를 사용할 수 없어 이번 세션에서만 전적을 유지합니다.";
+  $("operationGrid").innerHTML = OPERATIONS.map((operation, index) => {
+    const record = SOLO.profile.operations[operation.id];
+    return `<button class="operation-card${index === 0 ? " featured" : ""}" data-operation="${operation.id}" ${SOLO.ready ? "" : "disabled"}>`
+      + `<div class="op-top"><span>OP. ${operation.number} / ${operation.region}</span><span class="op-level">${operation.difficulty}</span></div>`
+      + `<strong>${operation.name}</strong><p>${index === 0 ? "바람과 포물선을 익히는 첫 번째 교전." : index === 1 ? "세 포대가 마주한 분지. 지형을 전술로." : "네 포대의 생존전. 마지막까지 정확하게."}</p>`
+      + `<div class="op-bottom"><span>${record.wins ? `✓ ${record.wins}승 · 최고 ${record.bestScore}점` : `${operation.players}인 개인전 · AI ${operation.players - 1}명 · 5라운드`}</span><span class="op-arrow" aria-hidden="true">↗</span></div></button>`;
+  }).join("");
+  $("operationGrid").querySelectorAll("[data-operation]").forEach((button) => {
+    button.onclick = () => showBriefing(OPERATIONS.find((operation) => operation.id === button.dataset.operation));
+  });
+}
+
+function enterBattle(title) {
+  SOLO.home = false;
+  $("homeScreen").hidden = true;
+  $("app").inert = false;
+  $("app").setAttribute("aria-hidden", "false");
+  $("battleTitle").textContent = title;
+  $("hdr").textContent = NETWORK_MODE ? "MULTIPLAYER" : "SINGLE PLAYER";
+  requestAnimationFrame(fitBattlefield);
+}
+
+function showHome() {
+  if (NETWORK_MODE) { location.href = "/tools/prototype/"; return; }
+  cancelPowerCharge(false);
+  closeModal();
+  SOLO.home = true;
+  SOLO.pausedAt = null;
+  G.phase = "HOME";
+  G.aiFireAt = 0;
+  $("battleGuide").hidden = true;
+  $("app").inert = true;
+  $("app").setAttribute("aria-hidden", "true");
+  $("homeScreen").hidden = false;
+  refreshOperations();
+  $("bQuickPlay").focus({ preventScroll: true });
+}
+
+function openDialog(html) {
+  cancelPowerCharge();
+  $("mbox").innerHTML = html;
+  $("modal").classList.add("on");
+}
+
+function showBriefing(operation) {
+  if (!operation || !SOLO.ready) return;
+  openDialog(`<div class="brief-number">OPERATION ${operation.number} / ${operation.region}</div>`
+    + `<h3>${operation.name}</h3><p class="sub">${operation.description}</p>`
+    + `<div class="brief-stats"><div><small>교전 규모</small><b>${operation.players}인 개인전</b></div><div><small>AI 난이도</small><b>${operation.difficulty}</b></div><div><small>작전 목표</small><b>누적 점수 1위</b></div></div>`
+    + `<p class="brief-tip">${operation.tip}<br>5라운드 전체의 점수로 승부합니다. 라운드 사이에 탄약과 장비를 보급하세요.</p>`
+    + `<div class="row"><button data-cancel>돌아가기</button><button class="fire" data-deploy>작전 시작 →</button></div>`);
+  $("mbox").querySelector("[data-cancel]").onclick = closeModal;
+  $("mbox").querySelector("[data-deploy]").onclick = () => {
+    closeModal();
+    SOLO.operation = operation;
+    SOLO.recorded = false;
+    SOLO.guideStep = 0;
+    G.seed = operation.seed;
+    G.aiLevel = operation.level;
+    G.cfgPlayers = Array.from({ length: operation.players }, (_, index) => ({ ai: index !== 0 }));
+    enterBattle(operation.name);
+    newMatch();
+    $("battleGuide").hidden = operation.id !== OPERATIONS[0].id;
+    updateGuide();
+    $("bFire").focus({ preventScroll: true });
+  };
+}
+
+function showHelp() {
+  openDialog(`<div class="brief-number">FIELD MANUAL / 플레이 방법</div><h3>한 발의 기술.</h3>`
+    + `<p class="sub">실시간 예상 궤적은 없습니다. 지난 한 발이 다음 발의 가장 좋은 길잡이입니다.</p>`
+    + `<div class="help-grid"><div><strong>01 / 조준</strong><p>전장 클릭·드래그 또는 <kbd>←</kbd> <kbd>→</kbd><br>포신 기준 각도를 맞춥니다.</p></div>`
+    + `<div><strong>02 / 파워</strong><p><kbd>Space</kbd>를 누르고, 원하는 힘에서 놓기.<br>휠·<kbd>↑</kbd> <kbd>↓</kbd>·직접 입력도 가능합니다.</p></div>`
+    + `<div><strong>03 / 무기와 지형</strong><p><kbd>1</kbd>–<kbd>8</kbd>로 무기 선택.<br>적 아래의 흙을 부수거나 적층탄으로 지형을 쌓으세요.</p></div>`
+    + `<div><strong>04 / 다섯 번의 교전</strong><p>라운드 사이 보급, 누적 점수로 승부.<br>지형과 남은 탄약은 다음 라운드로 이어집니다.</p></div></div>`
+    + `<p class="sub">Shift + 방향키·휠: 미세 조정 · 하단 파워 바: 목표 핀 · 바람은 매 턴 변합니다.<br>PC 키보드·마우스 권장. 터치에서는 각도·파워 입력 후 발사 버튼을 사용할 수 있습니다.<br>싱글플레이는 메뉴를 여는 동안 일시정지합니다. 멀티플레이는 계속 진행됩니다.</p>`
+    + `<div class="row"><button class="fire" data-close>전장으로 돌아가기</button></div>`);
+  $("mbox").querySelector("[data-close]").textContent = SOLO.home ? "작전실로 돌아가기" : "전장으로 돌아가기";
+  $("mbox").querySelector("[data-close]").onclick = closeModal;
+}
+
+function showRecords() {
+  openDialog(`<div class="brief-number">SERVICE RECORD / 이 브라우저의 기록</div><h3>당신이 남긴 전적.</h3>`
+    + `<p class="sub">작전을 끝까지 완료하면 기록됩니다. 사용자 설정 매치와 멀티플레이는 포함하지 않습니다.</p>`
+    + `<table class="sc"><tr><th>작전</th><th>완료</th><th>승리</th><th>최고 점수</th></tr>`
+    + OPERATIONS.map((operation) => {
+      const record = SOLO.profile.operations[operation.id];
+      return `<tr><td>${operation.number} ${operation.name}</td><td>${record.completed}</td><td>${record.wins}</td><td>${record.bestScore}</td></tr>`;
+    }).join("") + `</table><p class="sub">${SOLO.persistent ? "이 기기·브라우저에만 저장됩니다. 계정 동기화와 진행 중 저장은 지원하지 않습니다." : "저장소를 사용할 수 없어 이번 세션에만 기록합니다."}</p><div class="row"><button data-close>닫기</button></div>`);
+  $("mbox").querySelector("[data-close]").onclick = closeModal;
+}
+
+function requestHome() {
+  if (SOLO.home) return;
+  openDialog(`<div class="brief-number">RETURN TO BASE</div><h3>작전실로 돌아갈까요?</h3>`
+    + `<p class="sub">${NETWORK_MODE ? "전장을 떠나도 멀티플레이 매치는 계속됩니다. 로비에서 같은 세션으로 복귀할 수 있습니다." : "진행 중인 매치는 저장되지 않습니다. 완료하지 않은 작전은 전적에 기록되지 않습니다."}</p>`
+    + `<div class="row"><button data-cancel>계속 플레이</button><button class="fire" data-home>작전실로 이동</button></div>`);
+  $("mbox").querySelector("[data-cancel]").onclick = closeModal;
+  $("mbox").querySelector("[data-home]").onclick = showHome;
+}
+
+function fitBattlefield() {
+  const wrap = $("wrap");
+  if (SOLO.home || innerWidth <= 760) return;
+  const availableWidth = Math.max(1, wrap.clientWidth - 40);
+  const availableHeight = Math.max(1, wrap.clientHeight - 47);
+  const width = Math.min(availableWidth, availableHeight * 16 / 9);
+  $("stage").style.setProperty("--stage-width", `${width}px`);
+  $("stage").style.setProperty("--stage-height", `${width * 9 / 16}px`);
+}
+
+new ResizeObserver(fitBattlefield).observe($("wrap"));
+$("bQuickPlay").onclick = () => showBriefing(OPERATIONS[0]);
+$("bHomeHelp").onclick = showHelp;
+$("bHelp").onclick = showHelp;
+$("bRecords").onclick = showRecords;
+$("bCustomMatch").onclick = () => { if (SOLO.ready) showSetup(); };
+$("bHome").onclick = requestHome;
+$("bBrandHome").onclick = (event) => { event.preventDefault(); requestHome(); };
+$("bDismissGuide").onclick = () => $("battleGuide").hidden = true;
+$("bNextGuide").onclick = () => {
+  if (SOLO.guideStep === GUIDE.length - 1) $("battleGuide").hidden = true;
+  else { SOLO.guideStep++; updateGuide(); }
+};
+
+let modalReturnFocus = null;
+new MutationObserver(() => {
+  const open = $("modal").classList.contains("on");
+  $("app").inert = open || SOLO.home;
+  $("homeScreen").inert = open;
+  if (open) {
+    if (!$("mbox").contains(document.activeElement)) modalReturnFocus = document.activeElement;
+    ($("mbox").querySelector("button:not(:disabled),input:not(:disabled)") || $("mbox")).focus();
+  } else if (modalReturnFocus?.isConnected && !modalReturnFocus.closest("[inert],[hidden]")) {
+    modalReturnFocus.focus({ preventScroll: true });
+  }
+}).observe($("modal"), { attributes: true, attributeFilter: ["class"] });
+
+$("modal").addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    if (G.phase !== "ROUND") closeModal();
+  }
+  if (event.key !== "Tab") return;
+  const controls = [...$("mbox").querySelectorAll("button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex='0']")].filter((element) => element.getClientRects().length);
+  if (!controls.length) { event.preventDefault(); return; }
+  const first = controls[0], last = controls[controls.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
 /* 파워 0 → 1000 을 훑는 시간. **표현·입력 상수라 시뮬레이션 결과와 무관하다** —
    sim 에 들어가는 것은 떼는 순간의 `power` 값 하나뿐이라 이 값을 바꿔도 결정론은 안 깨진다.
 
@@ -797,6 +766,7 @@ function handleNetworkMessage(message) {
       const me = message.players.find((player) => player.slot === N.mySlot);
       $("bSetup").disabled = !(me && me.host && message.status === "lobby" && message.players.length >= 2);
       $("bSetup").textContent = message.status === "lobby" ? "멀티 매치 시작" : `룸 상태 · ${message.status}`;
+      $("bSetup").hidden = message.status !== "lobby";
       break;
     }
     case "matchInit":
@@ -907,6 +877,8 @@ async function bootNetwork() {
 
 /* ══════════════════ 매치 시작 ══════════════════ */
 function newMatch() {
+  SOLO.recorded = false;
+  SOLO.pausedAt = null;
   /* 맵도 스폰도 **정규 생성기**를 쓴다 (`docs/mapgen.md`). 예전에는 샌드박스 프리셋
      `hills` 를 썼는데, 그러면 로컬에서 보는 지형이 실제 매치의 지형이 아니었다 —
      지질 구역도 스폰 선택도 프로토타입에만 없었다. */
@@ -920,7 +892,7 @@ function newMatch() {
   G.spawnXs = G.spawnCells.map((cell) => cell * P.CELL_SUBPX);
   G.players = [];
   for (let i = 0; i < n; i++) {
-    G.players.push(M.makePlayer(i, NAMES[i], G.cfgPlayers[i].ai, G.spawnXs[i]));
+    G.players.push(M.makePlayer(i, SOLO.operation ? (i === 0 ? "당신" : `포대 ${String(i).padStart(2, "0")}`) : NAMES[i], G.cfgPlayers[i].ai, G.spawnXs[i]));
   }
   M.beginRound(G.players, G.spawnCells, 0);
   G.round = 1; G.turnNo = 0; G.roundTurn = 0; G.cur = 0; G.wind = 0; G.windDelta = 0;
@@ -975,6 +947,7 @@ function commitAim() {
   if (G.phase !== "AIM") return;
   const pl = G.players[G.cur];
   if (!canControl(pl)) return;
+  if (!NETWORK_MODE && !$("battleGuide").hidden) { SOLO.guideStep = 3; updateGuide(); }
   pl.intent = {
     angle10: pl.angle10, power: pl.power, weaponId: pl.weaponId,
     moveDx: parseInt($("iMove").value, 10) || 0,
@@ -1033,6 +1006,7 @@ function resolve() {
   G.flightDuration = Math.min(9000, Math.max(2400, G.flightEnd * 1000 / 36));
   G.phase = "RESOLVE";
   $("bFire").disabled = true;
+  syncAim(); syncWeapons();
   drawCards();
   startFireFx(r.events);
   const fire = r.events.find((e) => e.t === "fire");
@@ -1137,6 +1111,7 @@ function endRound(out) {
 const humansConfigured = () => G.cfgPlayers.some((c) => !c.ai);
 
 function startNextRound() {
+  SOLO.pausedAt = null;
   /* 지형은 라운드를 넘어 유지되므로 스폰을 **현재 격자에서 다시 고른다.**
      회전은 라운드 번호에서 온다 — 자리마다 발밑이 달라 슬롯 고정이면 유불리가 된다
      (`docs/mapgen.md` §9.1). */
@@ -1174,7 +1149,7 @@ function logEvent(e) {
 
 /* ══════════════════ 모달 ══════════════════ */
 function closeModal() { $("modal").classList.remove("on"); }
-$("modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+$("modal").addEventListener("click", (e) => { if (e.target.id === "modal" && G.phase !== "ROUND") closeModal(); });
 
 function showShop() {
   const box = $("mbox");
@@ -1183,10 +1158,10 @@ function showShop() {
   function render() {
     const pl = hs[idx];
     if (!pl) { startNextRound(); return; }
-    let h = `<h3>상점 — 라운드 ${G.round}</h3>`
+    let h = `<div class="brief-number">FIELD SUPPLY / 라운드 사이 보급</div><h3>다음 교전을 준비하세요.</h3>`
       + `<div class="sub"><b style="color:${TEAM[pl.slot]}">${pl.name}</b> · 보유 `
       + `<u style="color:var(--gold);text-decoration:none;font-family:ui-monospace">${pl.gold.toLocaleString()}</u> G`
-      + ` · 라운드 사이에만 열린다 (game-design.md §7)</div><div class="shopgrid">`;
+      + ` · 라운드 ${G.round} / ${M.RULES.rounds} · 구매 즉시 탄약과 장비에 반영됩니다.</div><div class="shopgrid">`;
     for (const w of Wp.WEAPONS) {
       if (w.ammo0 === null) continue;
       const can = pl.gold >= w.price;
@@ -1231,25 +1206,46 @@ function showScores(final) {
       + `<td style="font-size:10px;color:#8A8175">${ammo}</td></tr>`;
   }
   h += `</table><div class="row">`;
-  if (final) h += `<button class="wide" data-new="1">새 매치</button>`;
+  if (final && !NETWORK_MODE) h += `<button data-home="1">작전실로 돌아가기</button><button class="fire" data-new="1">${SOLO.operation ? "같은 작전 재도전" : "새 매치"}</button>`;
+  else if (final) h += `<button class="wide" data-new="1">멀티플레이 로비</button>`;
   else h += `<button class="wide" data-close="1">닫기</button>`;
   h += `</div>`;
   $("mbox").innerHTML = h;
   const nb = $("mbox").querySelector("[data-new]");
-  if (nb) nb.onclick = () => { closeModal(); showSetup(); };
+  if (nb) nb.onclick = () => {
+    closeModal();
+    if (NETWORK_MODE) location.href = "/tools/multiplayer/";
+    else if (SOLO.operation) showBriefing(SOLO.operation);
+    else showSetup();
+  };
+  const homeButton = $("mbox").querySelector("[data-home]");
+  if (homeButton) homeButton.onclick = showHome;
   const cb = $("mbox").querySelector("[data-close]");
   if (cb) cb.onclick = closeModal;
   $("modal").classList.add("on");
 }
 function showFinal() {
   const best = G.players.slice().sort((a, b) => b.score - a.score)[0];
+  if (!NETWORK_MODE && SOLO.operation && !SOLO.recorded) {
+    SOLO.profile = recordResult(SOLO.profile, SOLO.operation.id, G.players);
+    SOLO.persistent = SOLO.storage ? saveProfile(SOLO.storage, SOLO.profile) : false;
+    SOLO.recorded = true;
+  }
   log(`<b>=== 매치 종료 — ${best.name} 우승 (${best.score}점) ===</b>`);
   showScores(true);
+  if (!NETWORK_MODE && SOLO.operation) {
+    const human = G.players[0];
+    const victory = G.players.every((player) => player.slot === 0 || player.score < human.score);
+    const banner = document.createElement("div");
+    banner.className = "result-banner";
+    banner.innerHTML = `<span class="eyebrow">OPERATION ${SOLO.operation.number} / COMPLETE</span><strong>${victory ? "작전 성공. 전장을 지배했습니다." : "작전 완료. 다음 한 발은 더 정확하게."}</strong><p>${human.score}점 · ${human.kills}격파 · 최고 기록 ${SOLO.profile.operations[SOLO.operation.id].bestScore}점<br>${SOLO.persistent ? "작전 기록이 이 브라우저에 저장되었습니다." : "작전 기록은 이번 세션에서만 유지됩니다."}</p>`;
+    $("mbox").prepend(banner);
+  }
 }
 
 function showSetup() {
-  let h = `<h3>새 매치</h3><div class="sub">인원 2~6 (game-design.md §3). `
-    + `한 명 발사 → 착탄·정착 → 다음 생존 플레이어 순서로 진행한다</div>`;
+  let h = `<div class="brief-number">CUSTOM SKIRMISH</div><h3>나만의 교전.</h3><div class="sub">2~6인 개인전 · AI 또는 같은 기기의 사람과 플레이합니다. `
+    + `5라운드 누적 점수제로 진행하며 작전 기록에는 포함하지 않습니다.</div>`;
   h += `<div class="row" data-cnt="1">`;
   for (let n = 2; n <= 6; n++)
     h += `<button data-n="${n}" ${G.cfgPlayers.length === n ? 'class="on"' : ""}>${n}인</button>`;
@@ -1266,7 +1262,7 @@ function showSetup() {
     + `<input type="number" id="setSeed" value="${G.seed}" min="0" max="255" `
     + `style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:3px;color:var(--ink);padding:4px 6px;font-family:ui-monospace">`
     + `<button data-rnd="1">±</button></div>`
-    + `<div class="row" style="margin-top:12px"><button class="wide fire" data-start="1">시작</button></div>`;
+    + `<div class="row" style="margin-top:12px"><button data-cancel="1">돌아가기</button><button class="wide fire" data-start="1">교전 시작 →</button></div>`;
   $("mbox").innerHTML = h;
   const box = $("mbox");
   box.querySelectorAll("[data-n]").forEach((b) => b.onclick = () => {
@@ -1286,8 +1282,11 @@ function showSetup() {
   };
   box.querySelector("[data-start]").onclick = () => {
     G.seed = Math.max(0, Math.min(255, parseInt($("setSeed").value, 10) || 0));
-    closeModal(); newMatch();
+    SOLO.operation = null;
+    closeModal(); enterBattle("사용자 설정 매치"); newMatch();
+    $("battleGuide").hidden = true;
   };
+  box.querySelector("[data-cancel]").onclick = closeModal;
   $("modal").classList.add("on");
 }
 
@@ -1325,11 +1324,11 @@ function ridge(seed, base, amp, step, salt) {
 }
 
 function buildBackdrop(seed) {
-  const zenith = hexToRgb("#3A2E4A"), mid = hexToRgb("#7E5A50"), horizon = hexToRgb("#D99A5B");
-  const far = ridge(seed, 326, 58, 92, 0x1111), middle = ridge(seed, 372, 84, 68, 0x2222), near = ridge(seed, 425, 96, 46, 0x3333);
-  const sunX = W * (.28 + (visualHash(seed, 1, 2, 0x5151) & 255) / 255 * .44), sunY = H * .56, sunR2 = 150 * 150;
+  const zenith = hexToRgb("#343B40"), mid = hexToRgb("#B18B72"), horizon = hexToRgb("#D9B887");
+  const far = ridge(seed, 140, 76, 75, 0x1111), middle = ridge(seed, 184, 80, 55, 0x2222), near = ridge(seed, 243, 75, 39, 0x3333);
+  const sunX = W * (.48 + (visualHash(seed, 1, 2, 0x5151) & 255) / 255 * .24), sunY = H * .23, sunR2 = 180 * 180;
   for (let y = 0; y < H; y++) {
-    const t = y / (H - 1); let rr, gg, bb;
+    const t = Math.min(1, y / (H * .5)); let rr, gg, bb;
     if (t < .62) {
       const u = t / .62; rr = zenith[0] + (mid[0] - zenith[0]) * u; gg = zenith[1] + (mid[1] - zenith[1]) * u; bb = zenith[2] + (mid[2] - zenith[2]) * u;
     } else {
@@ -1338,19 +1337,21 @@ function buildBackdrop(seed) {
     for (let x = 0; x < W; x++) {
       const i = y * W + x, h = visualHash(seed, x, y, 0xA77A), n = (h & 15) - 7;
       grain[i] = h & 15;
-      let r = rr * .72, g = gg * .72, b = bb * .72;
+      let r = rr * .94, g = gg * .94, b = bb * .94;
       const dx = x - sunX, dy = y - sunY, d2 = dx * dx + dy * dy;
       if (d2 < sunR2) {
         const glow = (1 - d2 / sunR2) * .38;
         r += 112 * glow; g += 72 * glow; b += 28 * glow;
       }
+      if (d2 < 27 * 27) { r = 235; g = 213; b = 172; }
       if (y > 75 && y < 310) {
         const band = ((visualHash(seed, x >> 4, y >> 3, 0xC10D) & 255) / 255 - .5) * 5;
         r += band; g += band * .72; b += band * .58;
       }
-      if (y >= far[x]) { r = 54; g = 42; b = 52; }
-      if (y >= middle[x]) { r = 39; g = 32; b = 39; }
-      if (y >= near[x]) { r = 27; g = 25; b = 29; }
+      if (y >= far[x]) { r = 125; g = 111; b = 94; }
+      if (y >= middle[x]) { r = 88; g = 85; b = 72; }
+      if (y >= near[x]) { r = 58; g = 65; b = 55; }
+      if (y >= middle[x] && y < middle[x] + 3) { r += 13; g += 10; b += 5; }
       scenePx[i] = abgr(r + n * .24, g + n * .18, b + n * .22);
     }
   }
@@ -1419,7 +1420,8 @@ function paintRow(y) {
     faceDepth[i] = depth;
     if (depth > 0 && prev === 0) faceAge[i] = 0;
     else if (depth === 0) faceAge[i] = 255;
-    const fresh = MAT_RGB[m], noise = (grain[i] - 7.5) * .6;
+    const stratum = ((y + (x >> 5) * 3 + (grain[i] >> 2)) % 19 < 2) ? -8 : 0;
+    const fresh = MAT_RGB[m], noise = (grain[i] - 7.5) * .85 + stratum;
     let r, g, b;
     if (depth > 0) {
       const weather = Math.min(.84, faceAge[i] / 38 * .84), thickness = 1 - (depth - 1) * .13;
@@ -1432,9 +1434,10 @@ function paintRow(y) {
       g = (fresh[1] * (1 - weather) + CRUST_RGB[1] * weather) * light * thickness + noise * .7;
       b = (fresh[2] * (1 - weather) + CRUST_RGB[2] * weather) * light * thickness + noise * .55;
     } else {
-      r = fresh[0] * .43 + CRUST_RGB[0] * .24 + noise;
-      g = fresh[1] * .43 + CRUST_RGB[1] * .24 + noise * .7;
-      b = fresh[2] * .43 + CRUST_RGB[2] * .24 + noise * .55;
+      const depthShade = 1 - Math.min(.25, y / H * .25);
+      r = (fresh[0] * .53 + CRUST_RGB[0] * .22 + noise) * depthShade;
+      g = (fresh[1] * .53 + CRUST_RGB[1] * .22 + noise * .7) * depthShade;
+      b = (fresh[2] * .53 + CRUST_RGB[2] * .22 + noise * .55) * depthShade;
     }
     px[i] = abgr(r, g, b);
   }
@@ -1928,7 +1931,7 @@ function syncChargeUi(pl) {
   $("chargePin").style.left = `${Math.max(0, Math.min(100, target / 10))}%`;
   $("chargeNow").textContent = String(power).padStart(4, "0");
   $("chargeTargetValue").textContent = String(target).padStart(4, "0");
-  $("chargeInstruction").textContent = active ? "HOLD SPACE · RELEASE TO FIRE" : "CLICK BAR TO PLACE TARGET PIN";
+  $("chargeInstruction").textContent = active ? "충전 중 · SPACE를 놓으면 발사" : "파워 바를 클릭해 목표 핀 설정";
   meter.setAttribute("aria-valuenow", String(target));
   meter.setAttribute("aria-valuetext", `목표 파워 ${target}`);
   $("bFire").querySelector("span").textContent = active ? "파워 충전 중" : "발사 명령";
@@ -2059,7 +2062,8 @@ stage.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 addEventListener("keydown", (e) => {
-  if (e.target.tagName === "INPUT") return;
+  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
+  if (e.key === " " && e.target.closest("button,a") && e.target.id !== "bFire") return;
   if ($("modal").classList.contains("on")) return;
   const pl = G.players[G.cur];
   if (G.phase !== "AIM" || !canControl(pl)) return;
@@ -2086,7 +2090,7 @@ addEventListener("blur", () => cancelPowerCharge());
 
 function selectWeapon(id) {
   const pl = G.players[G.cur];
-  if (!canControl(pl)) return;
+  if (G.phase !== "AIM" || !canControl(pl)) return;
   if (!M.canFire(pl, id)) { log(`<i>${Wp.byId(id).name} 탄약 없음</i>`); return; }
   pl.weaponId = id; AudioFx.ui(); syncWeapons();
 }
@@ -2114,6 +2118,7 @@ function syncAim() {
   $("cShield").disabled = locked || pl.items.shield === 0;
   $("iMove").disabled = locked || pl.items.fuel === 0;
   $("bFire").disabled = locked;
+  $("bShop").disabled = G.phase !== "ROUND" || SOLO.recorded;
   $("iMove").placeholder = pl.items.fuel === 0 ? "연료 없음" : "";
   syncChargeUi(pl);
 }
@@ -2138,10 +2143,20 @@ function syncWeapons() {
     const dis = locked || a <= 0;
     const ammoText = w.ammo0 === null ? "∞" : a;
     const classes = `${pl.weaponId === w.id ? "on " : ""}${w.id === Wp.NUCLEAR_WEAPON_ID ? "nuclear" : ""}`.trim();
-    h += `<button data-w="${w.id}" class="${classes}" ${dis ? "disabled" : ""}>`
-      + `<div style="display:flex;justify-content:space-between;width:100%">`
-      + `<span>${w.name}</span><i>${ammoText}</i></div>`
-      + `<span class="d">${w.desc}</span></button>`;
+    const icons = [
+      "M12 3 8 9v14h8V9Zm-4 8h8M8 19h8M12 6v3",
+      "M12 2 6 9v14h12V9Zm-6 11h12M9 17h6M3 6 1 4m20 2 2-2",
+      "m12 2-3 5v9h6V7Zm-7 11-3 4v7h6v-7Zm14 0-3 4v7h6v-7M12 20v4",
+      "M8 3h8v12l-4 8-4-8Zm0 5 8 4m-8 0 8 4M4 24h16",
+      "M12 4a8 8 0 1 0 8 8M12 4v4m0 12v-4M4 12h4m8 0h4M18 2l4 4-4 4",
+      "m12 2-5 9 3 12h4l3-12Zm-5 9h10M12 6v11",
+      "m3 19 9-5 9 5-9 5Zm0-6 9-5 9 5M3 7l9-5 9 5",
+      "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 6v3m-5 5 3-3m7 3-3-3M9 7h6M5 14l3 5m11-5-3 5",
+    ];
+    h += `<button data-w="${w.id}" class="${classes}" aria-label="${w.name} ${ammoText}발 — ${w.desc}" title="${w.name} · ${w.desc}" ${dis ? "disabled" : ""}>`
+      + `<span class="weapon-key">${w.id + 1}</span><i>${ammoText}</i>`
+      + `<svg class="weapon-icon" viewBox="0 0 24 26" aria-hidden="true"><path d="${icons[w.id]}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
+      + `<span class="weapon-name">${w.name}</span></button>`;
   }
   box.innerHTML = h;
   box.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => selectWeapon(+b.dataset.w));
@@ -2149,6 +2164,7 @@ function syncWeapons() {
   $("hWeapon").textContent = weapon.name;
   $("hWeapon").style.color = weapon.id === Wp.NUCLEAR_WEAPON_ID ? "#FFD36A" : TEAM[pl.slot];
   $("hAmmo").textContent = weapon.ammo0 === null ? "∞" : `${ammo}발`;
+  $("weaponDescription").textContent = `${weapon.name} · ${weapon.desc}`;
 }
 
 function drawCards() {
@@ -2192,7 +2208,7 @@ $("bSetup").onclick = () => {
 $("bScores").onclick = () => showScores(false);
 $("bShop").onclick = () => {
   if (NETWORK_MODE && G.phase === "ROUND") showNetworkShop(G.round);
-  else if (!NETWORK_MODE && G.phase === "AIM") showShop();
+  else if (!NETWORK_MODE && G.phase === "ROUND" && !SOLO.recorded) showShop();
   else log("<i>상점은 라운드 사이에만 열린다</i>");
 };
 $("bMulti").onclick = () => { location.href = "/tools/multiplayer/"; };
@@ -2214,6 +2230,23 @@ const PH = {
 
 function frame() {
   const now = performance.now();
+  if (SOLO.home) { requestAnimationFrame(frame); return; }
+  if (!NETWORK_MODE && $("modal").classList.contains("on")) {
+    if (SOLO.pausedAt === null) SOLO.pausedAt = now;
+    requestAnimationFrame(frame);
+    return;
+  }
+  if (SOLO.pausedAt !== null) {
+    const elapsed = now - SOLO.pausedAt;
+    for (const key of ["aiFireAt", "flightStartedAt", "impactAt"]) if (G[key] > 0) G[key] += elapsed;
+    for (const effect of [...FX.explosions, ...FX.muzzles]) effect.at += elapsed;
+    for (const key of ["shakeAt", "flashAt", "rumbleAt"]) if (FX[key] >= 0) FX[key] += elapsed;
+    for (const deadlines of [FX.recoilUntil, FX.hitUntil]) {
+      for (let index = 0; index < deadlines.length; index++) if (deadlines[index] > 0) deadlines[index] += elapsed;
+    }
+    FX.lastNow = now;
+    SOLO.pausedAt = null;
+  }
   resetFxClock(now);
   updatePowerCharge(now);
   if (G.phase === "AIM") {
@@ -2256,18 +2289,29 @@ async function loadTrigTable() {
 async function boot() {
   if (!CanonTrig.trigLoaded()) await loadTrigTable();
   if (NETWORK_MODE) {
+    enterBattle("멀티플레이 전장");
     await bootNetwork();
   } else {
+    try {
+      SOLO.storage = localStorage;
+      const saved = loadProfile(SOLO.storage);
+      SOLO.profile = saved.profile;
+      SOLO.persistent = saved.persistent;
+    } catch { SOLO.storage = null; }
+    SOLO.ready = true;
+    $("bQuickPlay").disabled = false;
+    document.body.classList.add("home-ready");
     showRange();
-    newMatch();
-    log("<em>Neodeol 프로토타입</em> — 무기 8종 · 5라운드 · 상점 · AI\n"
-      + "왼쪽에서 무기를 고르고 각도·파워를 맞춰 발사한다. 한 발의 착탄과 정착이 끝나야 다음 턴이 시작된다.");
+    showHome();
   }
   requestAnimationFrame(frame);
 }
 boot().catch((error) => {
   log(`<i>부팅 실패: ${error.message}</i>`);
   announce("BOOT ERROR", error.message, "#FF3D9E", 1600);
+  const loading = document.querySelector(".home-screen-loading");
+  loading.className = "boot-error";
+  loading.textContent = `전장을 불러오지 못했습니다. 새로고침 후 다시 시도해 주세요. (${error.message})`;
   requestAnimationFrame(frame);
 });
 </script>

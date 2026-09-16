@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from neodeol import __version__, constants
@@ -139,7 +139,13 @@ async def trig_table() -> FileResponse:
 
 
 # ── 루트 ────────────────────────────────────────────────────────────────
-@app.get("/", response_class=HTMLResponse, tags=["dev"])
+@app.get("/", include_in_schema=False)
+async def game_home() -> RedirectResponse:
+    destination = "/tools/prototype/" if (STATIC_DIR / "prototype" / "index.html").is_file() else "/dev"
+    return RedirectResponse(destination, status_code=307)
+
+
+@app.get("/dev", response_class=HTMLResponse, tags=["dev"])
 async def index() -> str:
     sandbox = "/sandbox/" if (STATIC_DIR / "sandbox" / "index.html").is_file() else None
     prototype = (

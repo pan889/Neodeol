@@ -6,6 +6,13 @@
 
 ## 1. 지금 무엇이 돌아가는가
 
+로컬 Docker의 `/`는 이제 `/tools/prototype/` 작전실로 이동한다. 기존 개발 링크 모음은 `/dev`에 있다.
+싱글플레이는 작전 선택 → 브리핑 → 5라운드 교전·보급 → 결과 기록 흐름이며, 멀티 경로는 그대로다.
+전적은 `neodeol.solo.profile.v1` localStorage에 저장하고 진행 중 매치를 저장하지 않는다.
+디버그 도구는 `/tools/prototype/?dev=1`에서 열 수 있다.
+싱글 기록·3개 작전의 5라운드 완주 검증:
+`node --test client/tests/operations.mjs client/tests/operations-integration.mjs`.
+
 **Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스까지 구현했다.**
 현재는 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화 단계다.
 
