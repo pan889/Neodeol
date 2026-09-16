@@ -2049,8 +2049,12 @@ stage.addEventListener("wheel", (e) => {
 }, { passive: false });
 
 addEventListener("keydown", (e) => {
-  if (["INPUT", "SELECT", "TEXTAREA"].includes(e.target.tagName)) return;
-  if (e.key === " " && e.target.closest("button,a") && e.target.id !== "bFire") return;
+  /* `window` 로 직접 dispatch 된 합성 이벤트는 `e.target` 이 Element 가 아니다. `.closest` 가
+     없어 예외가 나고 **핸들러 전체가 죽는다** — 스페이스만 그랬다(다른 키는 단축평가로 비켜간다).
+     멀티 Canvas E2E 가 정확히 여기서 멈췄다. 실제 키 입력은 target 이 Element 라 영향이 없었다. */
+  const el = e.target instanceof Element ? e.target : null;
+  if (el && ["INPUT", "SELECT", "TEXTAREA"].includes(el.tagName)) return;
+  if (e.key === " " && el?.closest("button,a") && el.id !== "bFire") return;
   if ($("modal").classList.contains("on")) return;
   const pl = G.players[G.cur];
   if (G.phase !== "AIM" || !canControl(pl)) return;

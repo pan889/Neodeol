@@ -152,7 +152,16 @@ npm --prefix client run test:cross-sim
 #      1000턴 리플레이 + 전 격자 정착 종료성
 npm --prefix client run test:cross-sim -- --slow
 docker compose exec server python -m pytest /app/tests/test_determinism.py -m slow
+
+# 3) 전체 스택 — **UI·HUD·입력을 건드렸으면 반드시 돌린다**
+#    엔드포인트 · 브라우저 미러 · 실제 WebSocket 2인 · 실제 Chrome 멀티 Canvas 2턴 · pytest
+#    작전실/전장 아트/관측경/입력 테스트(28개)는 **여기서만** 돌아간다
+./scripts/verify-stack.sh
 ```
+
+**(3)은 위 목록에 없던 탓에 실제로 사고가 났다.** HUD 개편에서 `e.target.closest` 가
+Element 를 가정한 채 들어가 `window` dispatch 합성 이벤트에서 예외가 났고, Chrome Canvas
+E2E 가 빨갛게 됐는데 (0)~(2.5)는 전부 초록이었다. **문서에 없는 검사는 돌지 않는다.**
 
 **(2)의 대조는 Python 이 한다** (`server/tests/test_cross_sim.py`). npm 스크립트는 골든의
 무결성만 확인하고 재생을 pytest 에 넘긴다 — 검증 로직을 TS 에도 두면 같은 로직이 두 벌이 되고,
