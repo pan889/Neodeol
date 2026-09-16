@@ -83,6 +83,7 @@ export function ruleFingerprint(): number[] {
   out.push(M.PROVINCES.length);
   for (const p of M.PROVINCES) out.push(...p.bands, p.bedrockDepth);
   out.push(M.NOISE_SHIFT, M.SURFACE_BASE, M.SURFACE_AMP, M.BEDROCK_Y, M.PROVINCE_BLEND);
+  out.push(M.SPAWN_MIN_GAP, M.SPAWN_MAX_RELIEF);
 
   /* 5. 매치 규칙 */
   out.push(
@@ -104,6 +105,7 @@ export function ruleFingerprint(): number[] {
 
   /* 6. 탄도 */
   out.push(
+    B.MAX_POWER,
     B.CFG.gravity,
     B.CFG.powerScale,
     B.CFG.windMax,

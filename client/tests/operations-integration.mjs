@@ -22,7 +22,7 @@ for (const operation of OPERATIONS) {
         continue;
       }
       const actor = state.players[state.activeSlot];
-      const intent = aiIntent(state.players, actor, state.wind, state.turnNo + 1, operation.seed, operation.level);
+      const intent = aiIntent(state.players, actor, state.wind, state.turnNo + 1, operation.seed, operation.level, state.roundTurn + 1);
       const result = Match.resolveMatchTurn(state, intent);
       assert.equal(result.settle.forced, false, `settlement turn ${state.turnNo}`);
       if (result.outcome.over) finishedRounds++;

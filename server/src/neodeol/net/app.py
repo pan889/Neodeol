@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -139,6 +140,40 @@ async def trig_table() -> FileResponse:
 
 
 # ── 루트 ────────────────────────────────────────────────────────────────
+@app.middleware("http")
+async def revalidate_tool_assets(request: Request, call_next: Any) -> Any:
+    response = await call_next(request)
+    if request.url.path.startswith("/tools/"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+def game_document(name: str) -> HTMLResponse:
+    path = STATIC_DIR / name / "index.html"
+    if not path.is_file():
+        return HTMLResponse("Not found", status_code=404)
+    modules = (STATIC_DIR / "multiplayer" / "sim").glob("*.js")
+    imports = {
+        f"/tools/multiplayer/sim/{module.name}": f"/tools/multiplayer/sim/{module.name}?rules={Rules.RULE_HASH}"
+        for module in modules
+    }
+    import_map = f'<script type="importmap">{json.dumps({"imports": imports})}</script>'
+    document = path.read_text(encoding="utf-8")
+    return HTMLResponse(document.replace('<script type="module"', import_map + '\n<script type="module"', 1))
+
+
+@app.get("/tools/prototype/", include_in_schema=False)
+@app.get("/tools/prototype/index.html", include_in_schema=False)
+async def prototype_document() -> HTMLResponse:
+    return game_document("prototype")
+
+
+@app.get("/tools/multiplayer/", include_in_schema=False)
+@app.get("/tools/multiplayer/index.html", include_in_schema=False)
+async def multiplayer_document() -> HTMLResponse:
+    return game_document("multiplayer")
+
+
 @app.get("/", include_in_schema=False)
 async def game_home() -> RedirectResponse:
     destination = "/tools/prototype/" if (STATIC_DIR / "prototype" / "index.html").is_file() else "/dev"

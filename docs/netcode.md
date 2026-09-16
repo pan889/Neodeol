@@ -211,7 +211,7 @@ WebSocket 경로는 `/ws/rooms/{roomCode}`다. 업그레이드 쿼리에 `token`
 | `intent` | `turnNo` | uint32 | — | 현재 턴이어야 한다(§5.3) |
 | | `activeSlot` | uint8 | 0~5 | `turnBegin.activeSlot`과 같아야 하며, 송신자의 슬롯이어야 한다 |
 | | `angle10` | uint16 | 차체 기준 데시도 0~1800 | 월드 발사각은 `angle10 - tankTilt10`. 상한은 `trig.bin` 배열 경계 |
-| | `power` | uint16 | 0~1000 | `v0 = (power * POWER_SCALE) >> 10` 의 정의역 |
+| | `power` | uint16 | 0~1500 | `v0 = (power * POWER_SCALE) >> 10` 의 정의역 |
 | | `weaponId` | uint8 | — | 무기 테이블 인덱스. 테이블 스키마는 `decisions.md` C1 |
 | | `moveDx` | int16 | cell | 연료 이동 의도. `docs/match.md` §5.1 |
 | | `useShield` | bool | — | 이번 턴 차폐막 사용 |
@@ -353,7 +353,7 @@ score,kills,damageDone,shieldUp,connected`를 가진다. `items`는
 ```
 turnNo가 현재 턴인가
 angle10 ∈ [0, 1800]
-power ∈ [0, 1000]
+power ∈ [0, 1500]
 weaponId를 실제로 보유하고 있는가, 탄약이 남았는가
 이미 이번 턴에 확정하지 않았는가
 플레이어가 살아있는가

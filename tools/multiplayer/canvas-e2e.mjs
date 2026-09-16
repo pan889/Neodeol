@@ -271,7 +271,7 @@ async function main() {
       bubbles: true, cancelable: true, clientX: ${aimBefore.x}, clientY: ${aimBefore.y}, deltaY: -120,
     }))`);
     await hostPage.waitFor(
-      `Number(document.querySelector('#iPower')?.value) === ${Math.min(1000, aimBefore.power + 25)}`,
+      `Number(document.querySelector('#iPower')?.value) === Math.min(Number(document.querySelector('#iPower').max), ${aimBefore.power + 25})`,
       3000,
       "mouse wheel power adjustment",
     );
@@ -287,11 +287,17 @@ async function main() {
       bubbles: true, cancelable: true, clientX: ${pinInput.x}, clientY: ${pinInput.y},
     }))`);
     await hostPage.waitFor(
-      "document.querySelector('#chargeTargetValue')?.textContent === '0680'",
+      "Number(document.querySelector('#chargeTargetValue')?.textContent) === Math.round(Number(document.querySelector('#chargeMeter').getAttribute('aria-valuemax')) * .68 / 5) * 5",
       3000,
       "charge target pin placement",
     );
     assert.equal(await hostPage.evaluate("Number(document.querySelector('#iAngle').value)"), pinInput.angle);
+    assert.equal(await hostPage.evaluate("document.querySelector('#stage').scrollTop"), 0);
+    assert.equal(await hostPage.evaluate(`(() => {
+      const stage = document.querySelector('#stage').getBoundingClientRect();
+      const wind = document.querySelector('#windHud').getBoundingClientRect();
+      return wind.top >= stage.top && wind.bottom <= stage.bottom;
+    })()`), true);
     console.log("canvas e2e input click+wheel+target-pin ok");
     await hostPage.evaluate("document.querySelector('#bFire').click(); true");
 

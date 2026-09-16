@@ -27,7 +27,7 @@ from typing import Final
 
 # ── 규칙 신원 (netcode.md §7.3) ───────────────────────────────────────
 # 상수값이 그대로인 로직 변경에도 SIM_VERSION 이 바뀌도록 수동으로 올린다.
-RULES_VERSION: Final = 6
+RULES_VERSION: Final = 8
 
 # ── 격자 (terrain.md §1) ────────────────────────────────────────────────
 GRID_W: Final = 960
@@ -81,11 +81,11 @@ CONNECTIVITY_MAX_ROUNDS: Final = 8
 
 # ── 초기 맵 생성 (mapgen.md) ───────────────────────────────────────────
 # 맵 생성 알고리즘을 바꾸면 반드시 올린다. 골든 리플레이와 함께 검증한다.
-MAPGEN_VERSION: Final = 2
+MAPGEN_VERSION: Final = 3
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 8
+MATCH_VERSION: Final = 10
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500
@@ -124,7 +124,8 @@ BLAST_RESIST_Q8: Final = {
 
 # ── 탄도 (simulation.md §8) — 전부 잠정값 ───────────────────────────────
 GRAVITY: Final = 12  # subpx/tick²
-POWER_SCALE: Final = 624  # B12 확정 — 최대 파워 45° 사거리 = 맵 폭의 98.9% (1899px)
+POWER_SCALE: Final = 624
+POWER_MAX: Final = 1500
 # 편차/사거리 비는 정확히 WIND_MAX/GRAVITY 이고 파워와 무관하다 (실측 확인).
 # 직접 플레이 피드백에 따라 평상시에는 완만하게 변하되 드문 돌풍이 위협이 되도록 최대치를 4로 올린다.
 WIND_MAX: Final = 4  # subpx/tick²
@@ -215,8 +216,10 @@ ITEM_TABLE: Final = (
 
 # ══ 맵 생성 (mapgen.md §3 §4) ═════════════════════════════════════════════
 NOISE_SHIFT: Final = 7
-SURFACE_BASE: Final = 170  # cells
-SURFACE_AMP: Final = 60  # cells
+SURFACE_BASE: Final = 262
+SURFACE_AMP: Final = 70
+SPAWN_MIN_GAP: Final = 36
+SPAWN_MAX_RELIEF: Final = 12
 MAPGEN_BEDROCK_Y: Final = 522
 PROVINCE_BLEND: Final = 48  # 구역 경계 혼합 폭 (셀)
 

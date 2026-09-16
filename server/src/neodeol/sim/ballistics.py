@@ -18,9 +18,9 @@ TS 와 다른 것은 언어 관용구뿐이고, 연산 순서·시프트·클램
 TS 는 ``>>`` 가 int32 로 강제 절단하는데 Python 정수는 무한 정밀도다. 실제 값이
 int32 를 넘으면 **두 구현이 갈라진다.** 넘지 않음을 확인해 둔다 (§8 상수 기준):
 
-    v0 = (power * 624) >> 10        power ≤ 1000  →  v0 ≤ 609
-    v0 * COS                        ≤ 609 * 4096 = 2,494,464
-    vx * k                          ≤ 609 * 39   =    23,751
+    v0 = (power * 624) >> 10        power ≤ 1500  →  v0 ≤ 914
+    v0 * COS                        ≤ 914 * 4096 = 3,743,744
+    vx * k                          ≤ 914 * 58   =    53,012
     dx*dx + dy*dy                   ≤ 30720² + 17280² = 1,242,316,800  < 2³¹
 
 경계에 여유가 큰 쪽은 아니므로, 상수를 키울 때(특히 ``POWER_SCALE``, 맵 크기)
@@ -48,6 +48,7 @@ MAP_H_SUB = H * CELL_SUBPX  # 17280
 TANK_W = 384  # 24 px
 TANK_H = 256  # 16 px
 MAX_HP = 100
+MAX_POWER = constants.POWER_MAX
 TANK_TILT_MAX10 = 140  # ±14.0°
 TANK_TILT_SAMPLE = (TANK_W * 7) >> 4
 

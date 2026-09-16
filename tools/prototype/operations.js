@@ -6,6 +6,11 @@ export const OPERATIONS = Object.freeze([
 
 export const PROFILE_KEY = "neodeol.solo.profile.v1";
 
+export function nextMatchSeed(entropy, previous) {
+  const seed = entropy >>> 0;
+  return seed === previous ? (seed ^ 0x9e3779b9) >>> 0 : seed;
+}
+
 const safeCount = (value) => Number.isSafeInteger(value) && value >= 0 ? Math.min(value, 100000000) : 0;
 
 export function normalizeProfile(value) {

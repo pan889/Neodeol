@@ -58,7 +58,7 @@ let threw = null;
 const intents = [];
 try {
   for (let turn = 1; turn <= 8; turn++) {
-    intents.push(AI.aiIntent(players, players[1], turn % 3 - 1, turn, seed, 2));
+    intents.push(AI.aiIntent(players, players[1], turn % 3 - 1, turn, seed, "normal"));
   }
 } catch (error) {
   threw = error;
@@ -69,7 +69,7 @@ check(threw === null, "aiIntent 가 8턴 연속 예외 없이 intent 를 만든�
 if (threw === null) {
   const valid = intents.every((it) =>
     Number.isInteger(it.angle10) && it.angle10 >= 0 && it.angle10 <= 1800
-    && Number.isInteger(it.power) && it.power >= 0 && it.power <= 1000
+    && Number.isInteger(it.power) && it.power >= 0 && it.power <= P.MAX_POWER
     && Number.isInteger(it.weaponId) && it.weaponId >= 0);
   check(valid, "intent 가 전부 정규 범위 안의 정수다");
   /* 무기를 골라 쓰는지 — 항상 0번만 쏘면 `ammoOf` 가 죽어 있어도 통과할 수 있다 */
@@ -95,7 +95,7 @@ check(shopThrew === null && bought.length > 0, "AI 가 실제로 무언가를 �
 /* ── AI 턴을 실제로 해결한다 — 발사부터 정착까지 ──────────────────────── */
 let turnThrew = null;
 try {
-  players[1].intent = AI.aiIntent(players, players[1], 0, 1, seed, 2);
+  players[1].intent = AI.aiIntent(players, players[1], 0, 1, seed, "normal");
   players[0].intent = null;
   const resolved = M.resolveTurn(players, 0);
   M.applyDetonations(players, resolved.dets);
@@ -174,7 +174,7 @@ try {
     if (!roster[cur].alive) cur = nextAlive(cur);
     const actor = roster[cur];
     /* 사람이든 AI 든 여기서는 AI 가 대신 조준한다 — 사람 쪽 UI 만 빠진 것 */
-    actor.intent = AI.aiIntent(roster, actor, game.wind, game.turnNo, MAP_SEED, 2);
+    actor.intent = AI.aiIntent(roster, actor, game.wind, game.turnNo, MAP_SEED, "normal");
 
     /* resolve */
     const r = M.resolveTurn(roster, game.wind);

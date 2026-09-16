@@ -4,7 +4,7 @@ import * as T from "./terrain.js";
 import * as B from "./ballistics.js";
 import * as Wp from "./weapons.js";
 import * as M from "./mapgen.js";
-export const MATCH_VERSION = 8;
+export const MATCH_VERSION = 10;
 export const AMMO_INFINITE = 0x7fffffff;
 export const RULES = {
     rounds: 5,
@@ -78,7 +78,7 @@ export function effectiveWeapon(player, weaponId) {
 }
 export function normalizeIntent(player, candidate) {
     const angle10 = candidate !== null && isInt(candidate.angle10) && candidate.angle10 >= 0 && candidate.angle10 <= 1800 ? candidate.angle10 : player.angle10;
-    const power = candidate !== null && isInt(candidate.power) && candidate.power >= 0 && candidate.power <= 1000 ? candidate.power : player.power;
+    const power = candidate !== null && isInt(candidate.power) && candidate.power >= 0 && candidate.power <= B.MAX_POWER ? candidate.power : player.power;
     let fallbackWeapon = player.weaponId;
     if (!canFire(player, fallbackWeapon)) fallbackWeapon = 0;
     const weaponId = candidate !== null && isInt(candidate.weaponId) && candidate.weaponId >= 0 && candidate.weaponId < Wp.WEAPONS.length && canFire(player, candidate.weaponId) ? candidate.weaponId : fallbackWeapon;
@@ -493,7 +493,7 @@ export function createMatch(mapSeed, specs) {
     T.markAll();
     const initialSettle = settleTerrain();
     if (initialSettle.forced) throw new Error("initial map settlement exceeded limit");
-    const spawnCells = M.chooseSpawnCells(T.grid, specs.length);
+    const spawnCells = M.chooseSpawnCells(T.grid, specs.length, mapSeed);
     const players = specs.map((spec, slot)=>makePlayer(slot, spec.name, spec.isAI === true, spawnCells[slot] * B.CELL_SUBPX));
     beginRound(players, spawnCells, 0);
     return {
@@ -578,7 +578,7 @@ export function startNextRound(state) {
     state.roundNo++;
     state.roundTurn = 0;
     state.activeSlot = (state.roundNo - 1) % state.players.length;
-    state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length);
+    state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length, state.mapSeed);
     beginRound(state.players, state.spawnCells, state.roundNo - 1);
     state.wind = deriveWind(state.mapSeed, state.turnNo + 1, state.wind);
     state.phase = "aim";

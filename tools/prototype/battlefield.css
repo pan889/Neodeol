@@ -1,11 +1,19 @@
 #ovl{image-rendering:auto}
+#stage{overflow:clip}
+#windHud{position:absolute;top:10px;left:50%;transform:translateX(-50%);width:176px;padding:7px 10px;color:#e0be86;background:#152019d9;border:1px solid #88916c55;border-radius:2px;text-align:center;font:10px ui-monospace,monospace;pointer-events:none}
+#windHud.gust{color:#ff9dbf;border-color:#ca789166}.wind-meter{position:relative;height:4px;background:#b7b99a33;margin-bottom:5px}.wind-meter::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:8px;background:#ddd4ad}.wind-meter i{display:block;position:absolute;left:var(--wind-start,50%);width:var(--wind-width,0%);height:100%;background:currentColor}
+#windDetail{display:block;font-size:8px;margin-top:4px}#windDetail:empty{display:none}.crowded-hud #windHud{top:60px}.crowded-hud #phaseHud{top:115px}
+.wide-battlefield #stage{aspect-ratio:21/9}
+.wide-battlefield #ter,.wide-battlefield #ovl{height:131.25%;top:var(--view-top,0%);bottom:auto}
 .tank-scope{position:absolute;left:12px;bottom:12px;width:210px;z-index:5;pointer-events:auto;background:#111b18ee;border:1px solid #a6a88766;border-radius:3px;overflow:hidden;box-shadow:0 5px 20px #0004}
 .tank-scope>button{display:flex;justify-content:space-between;align-items:center;width:100%;padding:7px 10px;border:0;border-radius:0;background:#1b2820;color:#d8d2b6;font-size:10px;text-align:left}
 .tank-scope small{font:8px ui-monospace,monospace;letter-spacing:.1em;color:#9ea689;margin-left:9px}
+.tank-scope[data-mode=flight]{border-color:#d8b77899}.tank-scope[data-mode=flight] small{color:#e8c887}.tank-scope[data-mode=impact]{border-color:#d6947699}
 .tank-scope canvas{position:static;display:block;width:100%;height:auto;aspect-ratio:420/228;pointer-events:none}
 .scope-caption{display:flex;justify-content:space-between;padding:6px 9px;font:8px ui-monospace,monospace;color:#b2b99e;border-top:1px solid #69765b44}
 #powerChargeHud{left:calc(50% - 110px);right:16px;max-width:550px}
 .battle-guide{bottom:auto;top:95px;left:18px;width:190px}
 @media(min-width:1500px){.battle-guide{left:25px}}
 @media(max-width:1050px){.tank-scope{width:174px}.tank-scope small{font-size:7px}.battle-guide{top:90px;width:180px}#powerChargeHud{left:calc(50% - 70px)}}
-@media(max-width:760px){.tank-scope{left:6px;bottom:66px;width:150px}.tank-scope>button{padding:4px 7px;font-size:9px}.tank-scope canvas{aspect-ratio:420/228}#powerChargeHud{left:12%;right:12%;max-width:none}.battle-guide{position:relative;top:auto;left:auto;width:auto}}
+@media(max-width:760px){#bView{display:none}.tank-scope{left:6px;bottom:66px;width:150px}.tank-scope>button{padding:4px 7px;font-size:9px}.tank-scope canvas{aspect-ratio:420/228}#powerChargeHud{left:12%;right:12%;max-width:none}.battle-guide{position:relative;top:auto;left:auto;width:auto}}
+@media(max-width:760px){#windHud{top:5px;width:130px;padding:5px 7px;font-size:8px}#windDetail{font-size:7px}.crowded-hud #windHud{top:40px}.crowded-hud #phaseHud{top:88px}.tank-scope{width:114px}.tank-scope>button{padding:4px 5px}.tank-scope small{margin-left:4px}.scope-caption{padding:5px 6px;font-size:7px}}

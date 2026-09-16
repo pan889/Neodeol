@@ -27,6 +27,7 @@ export const MAP_H_SUB = H * CELL_SUBPX; // 17280
 export const TANK_W = 384; // 24 px
 export const TANK_H = 256; // 16 px
 export const MAX_HP = 100;
+export const MAX_POWER = 1500;
 export const TANK_TILT_MAX10 = 140; // ±14.0°
 const TANK_TILT_SAMPLE = (TANK_W * 7) >> 4;
 

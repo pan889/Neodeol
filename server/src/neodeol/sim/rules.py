@@ -93,6 +93,8 @@ def rule_fingerprint() -> list[int]:
         M.SURFACE_AMP,
         M.BEDROCK_Y,
         M.PROVINCE_BLEND,
+        M.SPAWN_MIN_GAP,
+        M.SPAWN_MAX_RELIEF,
     ]
 
     # 5. 매치 규칙
@@ -115,6 +117,7 @@ def rule_fingerprint() -> list[int]:
 
     # 6. 탄도
     out += [
+        B.MAX_POWER,
         B.CFG.gravity,
         B.CFG.power_scale,
         B.CFG.wind_max,

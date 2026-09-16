@@ -12,7 +12,11 @@
 디버그 도구는 `/tools/prototype/?dev=1`에서 열 수 있다.
 싱글 기록·3개 작전의 5라운드 완주 검증:
 `node --test client/tests/operations.mjs client/tests/operations-integration.mjs`.
-전장 아트·비파괴 렌더 경계 검증: `node --test client/tests/battlefield-art.mjs`.
+전장 아트·비파괴 렌더 경계·포탄 추적 검증: `node --test client/tests/battlefield-art.mjs client/tests/scope-camera.mjs`.
+AI 난이도·역풍 사거리·파워 상한·재생 시간 검증: `node --test client/tests/ai-difficulty.mjs client/tests/flight-playback.mjs`.
+산악 지형·초기 정착·랜덤 스폰 검증: `npm --prefix client run test:mapgen`.
+서버가 게임 HTML의 import map에 규칙 해시를 붙이고 `/tools/` 자산은 재검증한다.
+배포 후 구버전 sim 모듈이 남아 새 UI와 섞이지 않도록 하며, 전적·쿠키·룸 세션 저장소는 지우지 않는다.
 
 **Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스까지 구현했다.**
 현재는 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화 단계다.

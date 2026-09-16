@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { OPERATIONS, PROFILE_KEY, loadProfile, normalizeProfile, recordResult, saveProfile } from "../../tools/prototype/operations.js";
+import { OPERATIONS, PROFILE_KEY, loadProfile, normalizeProfile, recordResult, saveProfile, nextMatchSeed } from "../../tools/prototype/operations.js";
 
 function memoryStorage(initial) {
   const values = new Map(initial ? [[PROFILE_KEY, initial]] : []);
@@ -25,6 +25,13 @@ test("empty storage initializes a versioned profile", () => {
   assert.equal(loaded.persistent, true);
   assert.deepEqual(loaded.profile, normalizeProfile(null));
   assert.equal(JSON.parse(storage.getItem(PROFILE_KEY)).version, 1);
+});
+
+test("new matches accept full uint32 entropy and cannot repeat the previous seed", () => {
+  assert.equal(nextMatchSeed(0xdeadbeef, 85), 0xdeadbeef);
+  assert.equal(nextMatchSeed(0, 85), 0);
+  assert.equal(nextMatchSeed(0xffffffff, 85), 0xffffffff);
+  for (const previous of [0, 85, 0xdeadbeef, 0xffffffff]) assert.notEqual(nextMatchSeed(previous, previous), previous);
 });
 
 test("unavailable and corrupt storage cannot prevent playing", () => {

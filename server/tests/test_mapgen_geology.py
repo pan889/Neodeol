@@ -35,8 +35,7 @@ def _settle(limit: int = 40000) -> int:
 def test_initial_settle_stays_far_under_the_cap(map_seed: int) -> None:
     """생성 직후 지형은 거의 정착해 있다.
 
-    **표면 형상을 안 건드리는 것이 지질 구역 설계의 핵심**이고, 이 검사가 그걸 지킨다.
-    지층 두께만 바뀌면 새로 노출되는 경사가 없어 정착 비용이 안 는다 (실측 최악 9스텝).
+    산악 지형에서도 급경사의 암반 노출과 제한된 퇴적층으로 초기 붕괴 비용을 낮춘다.
     여기가 무너지면 `create_match` 가 `RuntimeError` 를 던져 방 생성이 실패한다.
     """
     _load(map_seed)
@@ -45,7 +44,6 @@ def test_initial_settle_stays_far_under_the_cap(map_seed: int) -> None:
     T.set_step(0)
     steps = _settle()
     assert steps > 0, "정착하지 않았다"
-    # 상한의 1% 이내여야 한다. 실측 최악 9 / 12000
     assert steps <= constants.MAX_SETTLE_STEPS // 100, (
         f"초기 정착이 {steps} 스텝이다 (상한 {constants.MAX_SETTLE_STEPS}). "
         "지층이 지표에 새 경사를 만들고 있다 — mapgen.md §4.4"
@@ -93,7 +91,8 @@ def test_surface_materials_are_actually_varied(map_seed: int) -> None:
         material = int(column[top])
         seen[material] = seen.get(material, 0) + 1
     fallable = {m: c for m, c in seen.items() if m in (T.SAND, T.SOIL, T.SCREE)}
-    assert len(fallable) >= 3, f"지표 재질이 {len(fallable)}종뿐이다: {seen}"
+    assert len(fallable) >= 2, f"느슨한 지표 재질이 {len(fallable)}종뿐이다: {seen}"
+    assert T.ROCK in seen and len(seen) >= 3, f"산악 암반과 퇴적층이 구분되지 않는다: {seen}"
     # 어느 하나가 맵을 독점하지 않는다
     assert max(fallable.values()) <= T.W * 3 // 4, f"한 재질이 지표를 독점한다: {fallable}"
 

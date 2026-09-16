@@ -271,7 +271,7 @@ def test_cross_sim_mapgen(path: pathlib.Path) -> None:
         assert f"{T.checksum():08X}" == rec["checksum"]
         assert T.mass_count() == rec["mass"]
         assert {
-            str(players): M.choose_spawn_cells(T.grid, players) for players in range(2, 7)
+            str(players): M.choose_spawn_cells(T.grid, players, map_seed) for players in range(2, 7)
         } == rec["spawns"]
 
         raw_2d = generated.reshape(T.H, T.W)

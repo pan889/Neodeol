@@ -91,7 +91,7 @@ function writeMapgenReplay(): void {
 
     const spawns: Record<string, number[]> = {};
     for (let players = 2; players <= 6; players++) {
-      spawns[String(players)] = M.chooseSpawnCells(T.grid, players);
+      spawns[String(players)] = M.chooseSpawnCells(T.grid, players, mapSeed);
     }
     records.push(JSON.stringify({
       mapSeed,
@@ -618,7 +618,7 @@ if (!shotsOnly) makeLongReplay("terrain-long1k", 1000, 8, 20);
     const by = t % tanks.length;                       // 슬롯을 돌아가며 쏜다
     const w = Wp.WEAPONS[t <= Wp.WEAPONS.length ? t - 1 : h % Wp.WEAPONS.length];
     const angle10 = 150 + ((h >>> 7) % 1500);          // 15.0° ~ 165.0°
-    const power = 300 + ((h >>> 17) % 700);
+    const power = t % 8 === 0 ? B.MAX_POWER : 300 + ((h >>> 17) % 700);
     const wind = ((h >>> 27) % (B.CFG.windMax * 2 + 1)) - B.CFG.windMax;
     shots.push({ w: w.id, angle10, power, wind, by });
 

@@ -5,6 +5,16 @@ from neodeol.sim import match as Match
 from neodeol.sim import weapons as Wp
 
 
+def test_power_range_includes_long_range_output_and_rejects_excess() -> None:
+    player = Match.make_player(0, "Player", False, 640)
+    for power in (0, 1000, 1001, 1250, B.MAX_POWER):
+        intent = Match.Intent(angle10=450, power=power, weapon_id=0, move_dx=0, use_shield=False)
+        assert Match.normalize_intent(player, intent).power == power
+    for power in (-1, B.MAX_POWER + 1):
+        intent = Match.Intent(angle10=450, power=power, weapon_id=0, move_dx=0, use_shield=False)
+        assert Match.normalize_intent(player, intent).power == player.power
+
+
 def test_turn_wind_changes_gradually_and_varies() -> None:
     wind = 0
     seen = {wind}
@@ -111,6 +121,9 @@ def test_forced_settle_does_not_desync_snapshot_roundtrip() -> None:
             [Match.PlayerSpec(name="A", is_ai=True), Match.PlayerSpec(name="B", is_ai=True)],
         )
         state = made.state
+        _unstable_grid(state.map_seed)
+        state.spawn_cells = [80, 880]
+        Match.begin_round(state.players, state.spawn_cells, 0)
         first = Match.resolve_match_turn(
             state,
             Match.Intent(angle10=520, power=780, weapon_id=1, move_dx=0, use_shield=False),

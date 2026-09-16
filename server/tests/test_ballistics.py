@@ -48,7 +48,10 @@ def test_flat_range_matches_doc_table() -> None:
     1,899 px 는 TS 쪽 `client/tests/determinism.mts` §7 이 내는 값과 **같은 수**여야 한다.
     두 언어가 여기서 1 px 이라도 갈라지면 같은 조준이 다른 곳에 떨어진다.
     """
-    assert B.flat_range_px(450, 1000, 0) == 1899, "최대 파워 45° 사거리"
+    assert B.flat_range_px(450, 1000, 0) == 1899, "기존 파워 1000의 45° 사거리"
+    assert B.flat_range_px(450, B.MAX_POWER, 0) == 4307
+    assert B.flat_range_px(450, B.MAX_POWER, -B.CFG.wind_max) == 2871
+    assert B.flat_range_px(450, B.MAX_POWER, -B.CFG.wind_max) > B.MAP_W_SUB // B.SUBPX
 
 
 @pytest.mark.determinism
@@ -89,7 +92,7 @@ def test_ballistics_fits_int32() -> None:
     ``ballistics.py`` 모듈 docstring 의 표와 같은 계산이다.
     """
     limit = 1 << 31
-    v0 = (1000 * B.CFG.power_scale) >> 10
+    v0 = (B.MAX_POWER * B.CFG.power_scale) >> 10
     assert v0 * trig.TRIG_SCALE < limit, "v0 * COS 가 int32 를 넘는다"
     # vx * k — k 는 steps 이하이고 steps 는 (|vx|+|vy|)>>5 + 1
     length = 2 * v0

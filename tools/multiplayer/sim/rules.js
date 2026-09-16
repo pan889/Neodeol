@@ -29,8 +29,9 @@ export function ruleFingerprint() {
     out.push(M.PROVINCES.length);
     for (const p of M.PROVINCES)out.push(...p.bands, p.bedrockDepth);
     out.push(M.NOISE_SHIFT, M.SURFACE_BASE, M.SURFACE_AMP, M.BEDROCK_Y, M.PROVINCE_BLEND);
+    out.push(M.SPAWN_MIN_GAP, M.SPAWN_MAX_RELIEF);
     out.push(RULES.rounds, RULES.roundTurnCap, RULES.startGold, RULES.goldPerDamage, RULES.goldPerKill, RULES.goldSurvive, RULES.goldLastPlaceBonus, RULES.killScore, RULES.damageScore, RULES.surviveScore, RULES.fuelCellsPerUnit, RULES.moveMaxStepUp, RULES.maxSettleSteps, RULES.connectivityMaxRounds);
-    out.push(B.CFG.gravity, B.CFG.powerScale, B.CFG.windMax, B.CFG.dragQ16, B.CFG.maxFlightTicks, B.CFG.selfHitIgnore, B.CFG.barrelLen, B.CFG.fallSafePx, B.CFG.fallDamageNum, B.CFG.fallDamageShift, B.CFG.burialPermille, B.CFG.burialDamage, B.CFG.burialReliefCells);
+    out.push(B.MAX_POWER, B.CFG.gravity, B.CFG.powerScale, B.CFG.windMax, B.CFG.dragQ16, B.CFG.maxFlightTicks, B.CFG.selfHitIgnore, B.CFG.barrelLen, B.CFG.fallSafePx, B.CFG.fallDamageNum, B.CFG.fallDamageShift, B.CFG.burialPermille, B.CFG.burialDamage, B.CFG.burialReliefCells);
     out.push(T.CFG.slideSandQ8, T.CFG.slideSoilQ8, T.CFG.slideScreeQ8, T.CFG.slideGateStatic ? 1 : 0, T.CFG.bothDirections ? 1 : 0);
     for (const material of [
         T.SAND,

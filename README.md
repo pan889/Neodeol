@@ -1,148 +1,138 @@
 # Neodeol · 너덜
 
-**턴제 포병 대전 게임.** 각도와 파워로 포탄을 쏘고, 폭발이 지형을 파괴하고, 파괴된 흙이
-모래처럼 무너져 내려 다음 턴의 지형이 바뀐다.
+### 한 발로 바꾸는 전장의 지형.
 
-그리고 그 붕괴가 **Python 서버와 TypeScript 클라이언트에서 비트 단위로 똑같이** 일어난다.
-이 저장소에서 볼 만한 것은 게임이 아니라 그쪽이다.
+바람을 읽고, 능선 너머를 겨냥하고, 무너지는 땅 위에서 다음 한 발을 준비하세요.
+**Neodeol은 파괴와 붕괴가 다음 턴의 전술이 되는 웹 기반 턴제 포병 게임입니다.**
 
-> **Neodeol**(너덜)은 **너덜겅** — 절벽 아래 무너져 쌓인 돌 더미와 그 비탈을 가리키는 우리말이다.
-> 지질학의 talus/scree 지대가 바로 이것이고, 이 게임의 핵심 상수인 **안식각**(angle of repose)이
-> 너덜겅이 쌓이는 기울기 그 자체다.
+싱글플레이 AI 작전부터 친구와의 멀티플레이까지. 황혼의 산악 전장, 직접 조절하는 각도와 파워,
+포탄을 따라가는 관측경이 한 번의 사격을 작은 전투로 만듭니다.
 
-<sub>**In English** — A turn-based artillery game whose destructible terrain is simulated
-*bit-identically* in two languages: a Python authoritative server (numpy) and a TypeScript client.
-Integer subpixel coordinates, no floating point anywhere in `sim/`, an order-independent sand
-automaton, and golden-replay cross-verification between the two implementations.
-**All design documentation is in Korean** (~4,400 lines under `docs/`).</sub>
+![Neodeol의 와이드 산악 전장과 포탄 관측경](docs/images/battlefield-wide.png)
+
+<sub>실제 로컬 플레이 화면입니다. 현재는 플레이 가능한 Canvas 프로토타입이며 멀티플레이 안정화를 진행하고 있습니다.</sub>
+
+> **In English** — A turn-based artillery game with collapsing, destructible terrain,
+> single-player AI operations, and multiplayer rooms. Every shot reshapes the battlefield.
+> The TypeScript client and authoritative Python server reproduce the same integer simulation.
+> Design documentation is maintained in Korean.
 
 ---
 
-## 무엇이 어려운가
+## 전장이 달라지는 이유
 
-멀티플레이가 **결정론적 lockstep**이다. 서버는 발사 의도(각도·파워·무기)만 브로드캐스트하고,
-지형은 각자 시뮬레이션한다. 그래서 두 구현이 한 셀이라도 어긋나면 **플레이어마다 다른 지형을
-보게 된다.** 결정론이 품질 목표가 아니라 전제다.
-
-이걸 지키려고 여섯 개를 절대 규칙으로 못박았다 ([CLAUDE.md](CLAUDE.md)).
-
-| | |
+| | 플레이 경험 |
 |---|---|
-| **정수 전용** | `1px = 16 subpx`, `1 cell = 32 subpx`. `sim/` 안에 부동소수점이 없다. 정적 검사가 막는다 |
-| **순서 독립** | 모래 자동자는 **제안 → 충돌 해소 → 확정** 3단계다. 셀을 순회하며 그 자리에서 옮기지 않는다 |
-| **순수 `sim/`** | 소켓·파일·시계·`random()` 금지. 난수는 `hash32(seed, x, y, step)` 하나뿐이다 |
-| **지형은 게임 상태** | 렌더러는 읽기만 한다. "보기 좋게" 보정하는 순간 클라이언트마다 다른 게임이 된다 |
-| **지형을 보내지 않는다** | 전체 전송은 재접속·체크섬 불일치 때만 쓰는 복구 경로다 |
-| **클라를 믿지 않는다** | 착탄 지점도 피해도 골드도 서버가 정한다 |
+| **무너지는 지형** | 폭발로 생긴 구멍에서 끝나지 않습니다. 흙과 자갈이 흘러내리고, 발밑이 사라진 탱크는 추락하거나 매몰됩니다. |
+| **매번 다른 교전** | 큰 봉우리와 골짜기, 모래·점토·자갈·암반 구역. 작전을 시작할 때 지형과 배치를 새로 뽑아 근접전과 장거리전을 만듭니다. |
+| **읽고 조절하는 사격** | 각도, 최대 1500의 파워, 바람을 조합합니다. 화면에 고정된 풍향계로 카메라가 움직여도 바람을 확인할 수 있습니다. |
+| **따라가는 관측경** | 조준할 때는 탱크를 확대하고, 발사하면 포탄을 추적합니다. 분열과 착탄 뒤의 폭발·붕괴도 이어서 관찰합니다. |
+| **8종의 무기 · 4종의 장비** | 표준탄부터 분열탄·굴착탄·적층탄까지. 피해를 줄지, 땅을 바꿀지 선택하고 라운드 사이 상점에서 재정비합니다. |
+| **5라운드의 승부** | 지형의 상처가 다음 라운드에도 남습니다. 한 라운드의 생존뿐 아니라 누적 점수와 보급까지 생각해야 합니다. |
 
-**안식각은 손으로 넣은 상수가 아니라 규칙 기하에서 창발한다.** 이동 규칙만 정해두면
-`SAND 26.6° < SOIL 40.3° < SCREE 44.2°` 가 실측으로 나온다. 세 각도가 이 순서로 벌어지는지를
-테스트가 게이트로 지킨다.
+PC에서는 **21:9 와이드 전장**을 기본으로 사용하며 `전체 지형` 버튼으로 16:9 전체 맵을 볼 수 있습니다.
+모바일에서는 전체 지형을 유지합니다. 탱크의 장갑·궤도, 지층의 질감과 폭발 흔적은 실제 게임 상태 위에 그립니다.
 
-## 포팅 방향
+## 혼자 시작해도 괜찮습니다
 
-```
-tools/sandbox/automaton.js     참조 구현. 순서 독립성을 손으로 잡은 원본
-        ↓
-client/src/sim/*.ts            위의 정수화 이식
-        ↓
-server/src/neodeol/sim/*.py    TS 의 1:1 번역. 창의성 없음
-```
+![싱글플레이 작전실과 세 가지 작전](docs/images/operations-room.png)
 
-권위는 서버에 있지만 **구현의 원본은 클라이언트 쪽이다.** 순서를 뒤집으면 "보기에 그럴듯한
-물리"를 서버에서 먼저 만들고 클라가 흉내내는 구조가 되어, 손으로 잡은 감각이 사라진다.
+| 작전 | 구성 | 이런 플레이에 |
+|---|---|---|
+| **01 · 첫 번째 섬광** | 나와 AI 1명 · 입문 | 각도와 파워를 익히는 첫 교전. AI는 더 크게 빗나가고, 초반에는 표준탄으로 대응합니다. |
+| **02 · 균열의 경계** | 나와 AI 2명 · 표준 | 지형 변화와 보급 선택까지 고려하는 3인 개인전. |
+| **03 · 마지막 지평선** | 나와 AI 3명 · 도전 | 정확한 사격과 남은 탄약이 중요한 4인 생존전. |
 
-## 결정론 게이트
+모든 작전은 처음부터 선택할 수 있습니다. 인원·난이도·시드를 정하는 **사용자 설정 매치**와
+로컬 핫시트도 제공합니다. 완료 횟수·승리·최고 점수는 이 브라우저에 기록됩니다.
+계정 간 동기화나 진행 중 매치 저장 기능은 아직 없습니다.
 
-`sim/` 을 건드리는 변경은 전부 통과해야 한다.
+| 비행 중 포탄 추적 | 분열탄 착탄·붕괴 관측 |
+|---|---|
+| ![현재 포탄 위치를 따라가는 관측경](docs/images/projectile-tracking.png) | ![분열탄의 폭발 영역을 함께 잡는 관측경](docs/images/impact-observation.png) |
+
+<sub>관측경은 현재 비행 중인 포탄을 따라가며, 착탄 뒤에는 폭발 영역과 뒤따르는 붕괴를 보여줍니다.</sub>
+
+## 바로 실행하기
+
+Docker와 Docker Compose가 준비되어 있다면:
 
 ```bash
-node tools/sandbox/harness.mjs                  # 참조 구현: 재현성 · 순서 독립 · 해시 품질
-npm --prefix client test                        # float 정적 검사 · 생성 사본 stale · 100회 재생
-docker compose exec server python -m pytest /app/tests
-npm --prefix client run test:cross-sim          # TS ↔ Python 교차 대조 (약 5분)
-```
-
-교차 검증은 **골든 리플레이**를 재생한다. TS 가 장면을 만들고, **대조는 Python 이 한다** —
-검증 로직을 양쪽에 두면 둘이 어긋날 때 어느 쪽이 맞는지 판정할 방법이 없다.
-
-대조 단위는 **스텝**과 **턴** 두 가지다. 스텝 대조 20개가 전부 통과한 뒤에 턴 대조가 이탈을
-잡은 전례가 있어서 둘 중 하나만 남기지 않는다.
-
-리플레이가 깨졌다면 **깨진 이유를 커밋 메시지에 적고** 재생성한다. 이유 없는 재생성은 금지다.
-그게 결정론 버그를 은폐하는 가장 흔한 경로다.
-
-### 밟지 않는 경로는 대조되지 않는다
-
-이 저장소에서 실제로 잡은 desync 세 건은 전부 **골든이 밟지 않는 분기**에 있었다.
-
-| 어디 | 무엇 |
-|---|---|
-| 강제 정착 종료 | 상한에 걸려 끝나는 경로만 활성 행 마스크를 안 비웠다 |
-| 라운드 턴 상한 | Python 이 `× 1000` 을 달고 있었다 (40,000 vs 40) |
-| 프로토타입 | 손으로 쓴 물리 사본이 정규 모듈과 갈라져 있었다 |
-
-정상 경로 골든 20개는 셋 다 통과시킨다. 그래서 골든을 늘리는 것보다 **안 밟히는 분기를 찾아
-경로를 만드는 것**이 더 값싸다.
-
-## 지금 상태
-
-Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스, Phase 4 Canvas lockstep 수직 슬라이스 완료.
-다음은 4인 실기기 · 장기 매치 · 재접속 완료 조건을 닫는 **Phase 4 안정화**다.
-[docs/roadmap.md](docs/roadmap.md) 가 기준이다.
-
-| | |
-|---|---|
-| 규칙 | 5라운드 · 무기 8종 · 아이템 4종 · 지질 프로빈스 4종 |
-| 검사 | pytest 135(기본 133, `slow` 2) · 클라이언트 44 · Chrome E2E 2턴 desync 0 |
-| 버전 | `SIM_VERSION 1d875e4391d70833` · `RULES_VERSION 6` · `PROTOCOL_VERSION 3` · `ruleHash A18FA875` |
-| 분량 | `docs/` 4,393줄 · 서버 4,618줄 · 클라이언트 2,740줄 · 도구 8,006줄 · 서버 테스트 2,788줄 |
-
-**미결 항목은 임의로 결정하지 않는다.** 확정되지 않은 값과 그 선택지는
-[docs/decisions.md](docs/decisions.md) 에 모여 있고, 코드의 `PROVISIONAL` 표기가 그걸 가리킨다.
-
-## 띄워 보기
-
-```bash
+git clone https://github.com/pan889/Neodeol.git
+cd Neodeol
 docker compose up -d --build
 ```
 
-| | |
+브라우저에서 **[localhost:8000](http://localhost:8000/)** 을 열면 작전실로 이동합니다.
+
+| 경로 | 용도 |
 |---|---|
-| http://localhost:8000/tools/prototype/ | 플레이어블 프로토타입 (로컬 핫시트 · AI) |
-| http://localhost:8000/tools/multiplayer/ | 멀티 네트워크 하네스 |
-| http://localhost:8000/sandbox/ | 자동자 튜닝 샌드박스 |
-| http://localhost:8000/constants | 상수 전체 |
+| [`/tools/prototype/`](http://localhost:8000/tools/prototype/) | 싱글플레이 · 사용자 설정 · 로컬 핫시트 |
+| [`/tools/multiplayer/`](http://localhost:8000/tools/multiplayer/) | 멀티플레이 룸 생성·참가 및 네트워크 검증 화면 |
+| [`/sandbox/`](http://localhost:8000/sandbox/) | 모래 붕괴 실험실 |
+| [`/version`](http://localhost:8000/version) | 실행 중인 시뮬레이션 버전·규칙 지문 |
 
-자세한 건 [docs/development.md](docs/development.md).
+외부 호스팅 서비스가 아니라 로컬 실행 방법입니다. 친구가 다른 기기에서 접속하려면 서버의 주소와
+포트 접근 설정이 필요합니다. 상세 설정은 [개발 환경](docs/development.md)을 참고하세요.
 
-## 문서
+### 기본 조작
 
-코드와 문서가 어긋나면 **문서가 기준**이고, 문서를 고치는 것이 먼저다.
-
-| | |
+| 조작 | 기능 |
 |---|---|
-| [decisions.md](docs/decisions.md) | **결정 대기 목록.** 다른 문서보다 먼저 본다 |
-| [terrain.md](docs/terrain.md) | **모래 붕괴 자동자 명세.** 이 프로젝트의 심장 |
-| [simulation.md](docs/simulation.md) | 좌표계 · 상수표 · 탄도 · 폭발 · 결정론 |
-| [match.md](docs/match.md) | 라운드 · 턴 · 경제 · 승패 |
-| [mapgen.md](docs/mapgen.md) | `mapSeed` → 초기 격자 · 스폰 |
-| [netcode.md](docs/netcode.md) | lockstep · 룸 수명주기 · 리싱크 · 프로토콜 |
-| [game-design.md](docs/game-design.md) | 게임 규칙과 확정된 기획 결정의 근거 |
-| [rendering.md](docs/rendering.md) | 아트 디렉션과 렌더 파이프라인 |
-| [development.md](docs/development.md) | 로컬 실행 · 도커 · 검증 |
-| [roadmap.md](docs/roadmap.md) | 단계별 진행과 완료 조건 |
+| 전장 클릭·드래그 / `←` `→` | 포신 각도 조절 |
+| 마우스 휠 / `↑` `↓` / 파워 입력란 | 발사 파워 조절 |
+| `Shift` + 방향키 | 미세 조절 |
+| 파워 바 클릭·드래그 | 목표 파워 핀 지정 — 참고 표시이며 자동 발사는 아닙니다 |
+| `Space` 누르기 → 놓기 | 파워 충전 → 발사 |
+| `발사 명령` 클릭 | 현재 설정된 파워로 발사 |
+| `1`–`8` | 무기 선택 |
+| `전체 지형` / `와이드 전장` | PC 전장 시야 전환 |
 
-## 라이선스
+## 같은 한 발, 같은 지형
 
-[GNU AGPL v3.0](LICENSE).
+멀티플레이의 기반은 **결정론적 lockstep**입니다. 클라이언트는 각도·파워·무기 같은 발사 의도를 보내고,
+권위 서버가 동일한 시뮬레이션으로 검증합니다. 평상시에는 전체 지형 대신 명령을 공유하며,
+접속·재접속·불일치 복구에는 스냅샷을 사용합니다.
 
-네트워크 서버가 있는 게임이라 **§13** 이 실제로 의미를 갖는다 — 수정한 서버를 네트워크 너머로
-제공하면 그 소스를 이용자에게 제공해야 한다. 고쳐서 돌리는 것은 환영하고, 고친 것을 닫는 것은
-원하지 않는다는 뜻이다.
+- **TypeScript → Python 1:1 이식** — 정수 서브픽셀 좌표와 공유 삼각함수 테이블.
+- **순서 독립적인 붕괴** — 제안과 충돌 해소를 분리한 모래 자동자.
+- **표현과 규칙의 분리** — Canvas·카메라·효과가 물리 상태를 바꾸지 않습니다.
+- **교차 리플레이 검증** — 같은 입력의 지형 체크섬·질량·턴 결과를 양쪽 구현에서 대조합니다.
 
-### 선행 작품에 대하여
+```bash
+npm --prefix client test
+node --test client/tests/operations.mjs client/tests/operations-integration.mjs \
+  client/tests/battlefield-art.mjs client/tests/scope-camera.mjs
+docker compose exec server python -m pytest /app/tests -m 'not slow'
+npm --prefix client run test:cross-sim
+```
 
-1991년 Scorched Earth 계열(포트리스, 웜즈, 건바운드)의 **규칙 구조를 계승한다.** 게임 메카닉은
-저작권 대상이 아니므로 그대로 가져간다. 다만 게임명 · 무기 고유명 · 캐릭터 · 스프라이트 ·
-UI 레이아웃은 **차용하지 않는다.** 무기는 전부 자체 명명했다. [docs/game-design.md](docs/game-design.md) §6.
+전체 스택 점검은 `bash scripts/verify-stack.sh`, 장기 회귀 검사는 [개발 환경 문서](docs/development.md)를 참고하세요.
+규칙 변경으로 골든 리플레이를 갱신할 때는 변경 이유를 함께 기록합니다.
+
+## 개발 현황과 문서
+
+**구현됨:** 정수 시뮬레이션과 서버 미러, 파괴·붕괴·무기·상점, 싱글플레이 작전실,
+Canvas 전장, 멀티플레이 lockstep 수직 슬라이스.
+
+**진행 중:** 4인 실기기·장기 매치·재접속 및 오프라인 상황을 포함한 멀티플레이 안정화.
+WebGL2 최종 렌더러와 상용 서비스 운영은 아직 완료 단계가 아닙니다.
+완료 기준과 다음 단계는 [로드맵](docs/roadmap.md)이 기준입니다.
+
+| 문서 | 내용 |
+|---|---|
+| [기획 결정](docs/decisions.md) · [게임 디자인](docs/game-design.md) | 확정된 규칙, 변경 근거와 미결 항목 |
+| [지형](docs/terrain.md) · [맵 생성](docs/mapgen.md) | 붕괴 자동자, 산악 지형과 랜덤 배치 |
+| [시뮬레이션](docs/simulation.md) · [매치](docs/match.md) | 탄도·폭발·턴·경제·승패 |
+| [네트워크](docs/netcode.md) · [렌더링](docs/rendering.md) | lockstep, 복구 흐름과 아트 디렉션 |
+| [개발 환경](docs/development.md) · [기여 규칙](CLAUDE.md) | 실행·검증 명령과 구현 원칙 |
+
+## 이름과 라이선스
+
+**Neodeol(너덜)** 은 절벽 아래 무너져 쌓인 돌 더미와 그 비탈을 뜻하는 우리말 **너덜겅**에서 왔습니다.
+지질학의 *talus / scree* 지대, 그리고 이 게임의 핵심인 안식각이 만나는 이름입니다.
+
+[GNU AGPL v3.0](LICENSE). 라이선스 조건은 `LICENSE` 전문을 참고하세요.
+
+Scorched Earth 계열 포병 게임의 턴제 사격 구조에서 출발했지만,
+무기 이름·탱크 그래픽·전장 아트·UI는 이 프로젝트의 표현으로 구성합니다.

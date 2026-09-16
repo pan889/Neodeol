@@ -240,7 +240,7 @@ def normalize_intent(player: Player, candidate: Intent | None) -> Intent:
         candidate.power
         if candidate is not None
         and _is_int(candidate.power)
-        and 0 <= candidate.power <= 1000
+        and 0 <= candidate.power <= B.MAX_POWER
         else player.power
     )
     fallback_weapon = player.weapon_id if can_fire(player, player.weapon_id) else 0
@@ -730,7 +730,7 @@ def create_match(map_seed: int, specs: list[PlayerSpec]) -> CreateMatchResult:
     initial_settle = settle_terrain()
     if initial_settle.forced:
         raise RuntimeError("initial map settlement exceeded limit")
-    spawn_cells = M.choose_spawn_cells(T.grid, len(specs))
+    spawn_cells = M.choose_spawn_cells(T.grid, len(specs), map_seed)
     players = [
         make_player(
             slot=index,
@@ -823,7 +823,7 @@ def start_next_round(state: MatchState) -> None:
     state.round_no += 1
     state.round_turn = 0
     state.active_slot = (state.round_no - 1) % len(state.players)
-    state.spawn_cells = M.choose_spawn_cells(T.grid, len(state.players))
+    state.spawn_cells = M.choose_spawn_cells(T.grid, len(state.players), state.map_seed)
     begin_round(state.players, state.spawn_cells, state.round_no - 1)
     state.wind = derive_wind(state.map_seed, state.turn_no + 1, state.wind)
     state.phase = "aim"

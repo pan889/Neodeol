@@ -111,7 +111,7 @@ wind     = reflect(previousWind + delta, -WIND_MAX, +WIND_MAX)
 buildMap(mapSeed)
 → 초기 연결성 검사
 → step=0, 전체 활성, 초기 정착
-→ chooseSpawnCells(settledGrid, playerCount)
+→ chooseSpawnCells(settledGrid, playerCount, mapSeed)
 → 플레이어 생성·배치
 → roundNo=1, turnNo=0, roundTurn=0, activeSlot=0, phase=aim
 ```

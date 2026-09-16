@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 8;
+export const MATCH_VERSION = 10;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {
@@ -210,7 +210,7 @@ export function normalizeIntent(player: Player, candidate: Intent | null): Inten
   const angle10 = candidate !== null && isInt(candidate.angle10) && candidate.angle10 >= 0 && candidate.angle10 <= 1800
     ? candidate.angle10
     : player.angle10;
-  const power = candidate !== null && isInt(candidate.power) && candidate.power >= 0 && candidate.power <= 1000
+  const power = candidate !== null && isInt(candidate.power) && candidate.power >= 0 && candidate.power <= B.MAX_POWER
     ? candidate.power
     : player.power;
   let fallbackWeapon = player.weaponId;
@@ -656,7 +656,7 @@ export function createMatch(mapSeed: number, specs: PlayerSpec[]): CreateMatchRe
   T.markAll();
   const initialSettle = settleTerrain();
   if (initialSettle.forced) throw new Error("initial map settlement exceeded limit");
-  const spawnCells = M.chooseSpawnCells(T.grid, specs.length);
+  const spawnCells = M.chooseSpawnCells(T.grid, specs.length, mapSeed);
   const players = specs.map((spec, slot) => makePlayer(
     slot,
     spec.name,
@@ -743,7 +743,7 @@ export function startNextRound(state: MatchState): void {
   state.roundNo++;
   state.roundTurn = 0;
   state.activeSlot = (state.roundNo - 1) % state.players.length;
-  state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length);
+  state.spawnCells = M.chooseSpawnCells(T.grid, state.players.length, state.mapSeed);
   beginRound(state.players, state.spawnCells, state.roundNo - 1);
   state.wind = deriveWind(state.mapSeed, state.turnNo + 1, state.wind);
   state.phase = "aim";

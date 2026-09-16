@@ -6,10 +6,13 @@
 
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
 from neodeol.net.app import app
+from neodeol.sim import rules as Rules
 
 
 @pytest.fixture
@@ -105,10 +108,28 @@ async def test_singleplayer_interface_assets(client: httpx.AsyncClient) -> None:
         page = await connection.get("/tools/prototype/")
         if page.status_code == 404:
             pytest.skip("NEODEOL_STATIC_DIR does not point at tools")
-        for asset in ("interface.css", "base.css", "operations.js", "canyon.svg", "battlefield-art.js", "battlefield.css"):
+        for asset in ("interface.css", "base.css", "operations.js", "canyon.svg", "battlefield-art.js", "battlefield.css", "scope-camera.js", "flight-playback.js"):
             response = await connection.get(f"/tools/prototype/{asset}")
             assert response.status_code == 200
             assert len(response.content) > 100
     assert 'id="homeScreen"' in page.text
     assert 'id="bQuickPlay"' in page.text
     assert 'id="battleGuide"' in page.text
+
+
+@pytest.mark.parametrize("name", ["prototype", "multiplayer"])
+async def test_game_documents_version_all_sim_imports(client: httpx.AsyncClient, name: str) -> None:
+    async with client as connection:
+        page = await connection.get(f"/tools/{name}/")
+        if page.status_code == 404:
+            pytest.skip("NEODEOL_STATIC_DIR does not point at tools")
+        assert page.headers["cache-control"] == "no-cache"
+        assert page.text.index('type="importmap"') < page.text.index('type="module"')
+        content = page.text.split('<script type="importmap">', 1)[1].split("</script>", 1)[0]
+        imports = json.loads(content)["imports"]
+        assert len(imports) == 8
+        for original, versioned in imports.items():
+            assert versioned == f"{original}?rules={Rules.RULE_HASH}"
+            asset = await connection.get(versioned)
+            assert asset.status_code == 200
+            assert asset.headers["cache-control"] == "no-cache"

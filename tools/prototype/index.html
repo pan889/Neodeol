@@ -34,11 +34,11 @@
   <a class="wordmark" href="/" id="bBrandHome" aria-label="작전실로 이동"><i class="brand-symbol" aria-hidden="true"></i>NEODEOL</a>
   <div class="battle-location"><span id="hdr">SINGLE PLAYER</span><strong id="battleTitle">첫 번째 섬광</strong></div>
   <div id="netStatus"><b id="netRoom">ROOM ------</b><span id="netConn">연결 준비 중</span></div>
-  <div class="battle-actions"><label class="sound-toggle"><input type="checkbox" id="cSound" checked><span>음향</span></label><button id="bSetup" class="network-start">매치 시작</button><button id="bHelp" aria-label="플레이 방법">도움말</button><button id="bScores">전황</button><button id="bShop">보급</button><button id="bTuning">개발</button><button id="bHome">작전실</button></div>
+  <div class="battle-actions"><label class="sound-toggle"><input type="checkbox" id="cSound" checked><span>음향</span></label><button id="bSetup" class="network-start">매치 시작</button><button id="bView">전체 지형</button><button id="bHelp" aria-label="플레이 방법">도움말</button><button id="bScores">전황</button><button id="bShop">보급</button><button id="bTuning">개발</button><button id="bHome">작전실</button></div>
 </header>
 <aside id="controls" aria-label="사격 조작부">
   <section class="aim-controls"><div class="aim-heading"><h2>FIRING SOLUTION</h2><span id="whoTurn"></span></div>
-    <div class="aim"><label for="iAngle">각도 °<input type="number" id="iAngle" min="0" max="180" step="0.1"></label><label for="iPower">파워<input type="number" id="iPower" min="0" max="1000" step="1"></label></div>
+    <div class="aim"><label for="iAngle">각도 °<input type="number" id="iAngle" min="0" max="180" step="0.1"></label><label for="iPower">파워<input type="number" id="iPower" min="0" max="1500" step="1"></label></div>
     <div class="support-controls"><label for="iMove">이동<input type="number" id="iMove" min="-30" max="30" step="1" value="0"></label><label class="chk"><input type="checkbox" id="cShield"><span>차폐막 <span id="shieldHave"></span></span></label></div>
   </section>
   <section class="weapon-controls"><h2>ARSENAL <span style="color:#859278">/ 무기 선택 · 1—8</span></h2><div class="wsel" id="wsel"></div><p id="weaponDescription" class="weapon-hint">표준탄 · 작은 원형 구덩이. 무한</p></section>
@@ -53,6 +53,10 @@
     <div id="combatHud">
       <div id="playerStrip"></div>
       <div id="phaseHud">AIM · ROUND 01 · TURN 01</div>
+      <div id="windHud" role="status" aria-label="현재 바람">
+        <div class="wind-meter" aria-hidden="true"><i></i></div>
+        <strong id="windReading">WIND 0</strong><small id="windDetail"></small>
+      </div>
       <div id="announce" role="status" aria-live="polite"><b>READY</b><small>전장을 계산하는 중</small></div>
       <div id="aimHud" class="readout">
         <span class="label">Firing solution</span>
@@ -70,13 +74,13 @@
           <b id="chargeNow">0600</b>
           <em>PIN <span id="chargeTargetValue">0600</span></em>
         </div>
-        <div id="chargeMeter" role="slider" tabindex="0" aria-label="목표 파워 핀" aria-valuemin="0" aria-valuemax="1000" aria-valuenow="600">
+        <div id="chargeMeter" role="slider" tabindex="0" aria-label="목표 파워 핀" aria-valuemin="0" aria-valuemax="1500" aria-valuenow="600">
           <i></i><span id="chargePin"></span>
         </div>
       </div>
-      <section id="tankScope" class="tank-scope" aria-label="활성 탱크 확대 관측경">
-        <button id="bTankScope" aria-expanded="true" aria-controls="scopeBody"><span>관측경 <small>OPTIC ×4</small></span><span id="scopeToggle">−</span></button>
-        <div id="scopeBody"><canvas id="scopeCanvas" width="420" height="228" aria-label="실제 전장 속 활성 탱크를 4배 확대"></canvas><div class="scope-caption"><span id="scopeUnit">UNIT 01</span><span id="scopeCondition">장갑 정상</span></div></div>
+      <section id="tankScope" class="tank-scope" aria-label="포탄 추적 관측경">
+        <button id="bTankScope" aria-expanded="true" aria-controls="scopeBody"><span>관측경 <small id="scopeMode">OPTIC ×4</small></span><span id="scopeToggle">−</span></button>
+        <div id="scopeBody"><canvas id="scopeCanvas" width="420" height="228" aria-label="조준 중 탱크, 발사 후 포탄과 착탄 지점을 확대"></canvas><div class="scope-caption"><span id="scopeUnit">UNIT 01</span><span id="scopeCondition">장갑 정상</span></div></div>
       </section>
     </div>
   </div></div>
@@ -130,8 +134,10 @@ import * as CanonTerrain from "../multiplayer/sim/terrain.js";
 import * as CanonPhys from "../multiplayer/sim/ballistics.js";
 import * as CanonMapgen from "../multiplayer/sim/mapgen.js";
 import { aiIntent, aiShop } from "./ai.js";
-import { OPERATIONS, loadProfile, normalizeProfile, recordResult, saveProfile } from "./operations.js";
+import { OPERATIONS, loadProfile, normalizeProfile, recordResult, saveProfile, nextMatchSeed } from "./operations.js";
 import { ENTITY_SCALE, buildGeology, terrainRelief, drawBackdrop, drawArtillery } from "./battlefield-art.js";
+import { sampleFlightTrack, scopeCamera } from "./scope-camera.js";
+import { buildFlightTimeline, flightTickAt } from "./flight-playback.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
 import * as CanonTrig from "../multiplayer/sim/trig.js";
@@ -188,7 +194,7 @@ const G = {
   wind: 0, windDelta: 0, players: [], spawnXs: [],
   cur: 0,                       // 현재 발사권을 가진 활성 슬롯
   legs: [], flightTracks: [], flightTick: 0, flightEnd: 0,
-  flightStartedAt: 0, flightDuration: 0, aiFireAt: 0,
+  flightStartedAt: 0, aiFireAt: 0,
   impactAt: 0, impactApplied: false,
   dets: [], trails: [],
   settleSteps: 0, connRounds: 0,
@@ -197,6 +203,7 @@ const G = {
   cfgPlayers: [{ ai: false }, { ai: true }],
   aiLevel: "normal",
 };
+const BATTLE_VIEW = { wide: true, top: 0 };
 const N = {
   session: null, version: null, socket: null, mySlot: null, room: null,
   serverResult: null, localComplete: null, pendingRoundEnd: null, pendingMatchEnd: null,
@@ -280,7 +287,7 @@ function showBriefing(operation) {
   openDialog(`<div class="brief-number">OPERATION ${operation.number} / ${operation.region}</div>`
     + `<h3>${operation.name}</h3><p class="sub">${operation.description}</p>`
     + `<div class="brief-stats"><div><small>교전 규모</small><b>${operation.players}인 개인전</b></div><div><small>AI 난이도</small><b>${operation.difficulty}</b></div><div><small>작전 목표</small><b>누적 점수 1위</b></div></div>`
-    + `<p class="brief-tip">${operation.tip}<br>5라운드 전체의 점수로 승부합니다. 라운드 사이에 탄약과 장비를 보급하세요.</p>`
+    + `<p class="brief-tip">${operation.tip}<br>매번 새로운 산악 지형과 랜덤 배치로 시작합니다.<br>5라운드 전체의 점수로 승부합니다. 라운드 사이에 탄약과 장비를 보급하세요.</p>`
     + `<div class="row"><button data-cancel>돌아가기</button><button class="fire" data-deploy>작전 시작 →</button></div>`);
   $("mbox").querySelector("[data-cancel]").onclick = closeModal;
   $("mbox").querySelector("[data-deploy]").onclick = () => {
@@ -288,7 +295,6 @@ function showBriefing(operation) {
     SOLO.operation = operation;
     SOLO.recorded = false;
     SOLO.guideStep = 0;
-    G.seed = operation.seed;
     G.aiLevel = operation.level;
     G.cfgPlayers = Array.from({ length: operation.players }, (_, index) => ({ ai: index !== 0 }));
     enterBattle(operation.name);
@@ -334,13 +340,19 @@ function requestHome() {
 
 function fitBattlefield() {
   const wrap = $("wrap");
+  const wide = BATTLE_VIEW.wide && innerWidth > 760;
+  document.body.classList.toggle("wide-battlefield", wide);
+  $("bView").textContent = BATTLE_VIEW.wide ? "전체 지형" : "와이드 전장";
   if (SOLO.home || innerWidth <= 760) return;
+  const aspect = wide ? 21 / 9 : 16 / 9;
   const availableWidth = Math.max(1, wrap.clientWidth - 40);
   const availableHeight = Math.max(1, wrap.clientHeight - 47);
-  const width = Math.min(availableWidth, availableHeight * 16 / 9);
+  const width = Math.min(availableWidth, availableHeight * aspect);
   $("stage").style.setProperty("--stage-width", `${width}px`);
-  $("stage").style.setProperty("--stage-height", `${width * 9 / 16}px`);
+  $("stage").style.setProperty("--stage-height", `${width / aspect}px`);
 }
+
+$("bView").onclick = () => { BATTLE_VIEW.wide = !BATTLE_VIEW.wide; fitBattlefield(); };
 
 new ResizeObserver(fitBattlefield).observe($("wrap"));
 $("bQuickPlay").onclick = () => showBriefing(OPERATIONS[0]);
@@ -381,18 +393,7 @@ $("modal").addEventListener("keydown", (event) => {
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
   else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
 });
-/* 파워 0 → 1000 을 훑는 시간. **표현·입력 상수라 시뮬레이션 결과와 무관하다** —
-   sim 에 들어가는 것은 떼는 순간의 `power` 값 하나뿐이라 이 값을 바꿔도 결정론은 안 깨진다.
-
-   1800 ms 였는데 목표 파워를 맞추기가 어려웠다. 파워 10 을 조준하려면 18 ms 안에 떼야 하고,
-   그건 사람의 반응 편차보다 좁아서 실력이 아니라 운에 가까워진다.
-
-   여기가 손맛 조절 나사다. 파워 10 을 맞추는 데 주어지는 시간:
-     1800 ms → 18 ms   (원래. 너무 빡빡했다)
-     2500 ms → 25 ms   ← 지금
-     3000 ms → 30 ms   (더 여유롭게 하고 싶으면)
-   한 줄만 고치면 되고, 값이 커질수록 한 발 쏘는 데 걸리는 체감 시간도 같이 늘어난다. */
-const POWER_CHARGE_MS = 2500;
+const POWER_CHARGE_PER_SECOND = 400;
 const CHARGE = { active: false, slot: -1, startedAt: 0, lastPower: -1, targetBySlot: new Int16Array(6) };
 CHARGE.targetBySlot.fill(600);
 
@@ -462,7 +463,7 @@ const AudioFx = (() => {
     ui() { tone(520, 390, .045, .045, "square"); },
     confirm() { tone(180, 95, .13, .12, "triangle"); burst(.06, .035, 1800); },
     fire(power = 700) {
-      const weight = .12 + Math.min(1000, power) / 1000 * .1;
+      const weight = .12 + Math.min(P.MAX_POWER, power) / P.MAX_POWER * .1;
       tone(92, 34, .42, weight, "triangle"); burst(.19, .15, 950); tone(420, 120, .1, .035, "sawtooth");
     },
     impact(size = 28, deposit = false, nuclear = false) {
@@ -486,7 +487,7 @@ const AudioFx = (() => {
 const humans = () => G.players.filter((p) => p.alive && !p.isAI);
 const alive = () => G.players.filter((p) => p.alive);
 
-function measureMaxRange() { return P.flatRangePx(450, 1000, 0); }
+function measureMaxRange() { return P.flatRangePx(450, P.MAX_POWER, 0); }
 function showRange() {
   const r = measureMaxRange();
   $("oRange").textContent = r + " px";
@@ -550,7 +551,7 @@ function applyRoomConnections(players) {
 function clearTurnPresentation() {
   cancelPowerCharge(false);
   G.legs = []; G.flightTracks = []; G.dets = [];
-  G.flightTick = 0; G.flightEnd = 0; G.flightStartedAt = 0; G.flightDuration = 0;
+  G.flightTick = 0; G.flightEnd = 0; G.flightStartedAt = 0;
   G.aiFireAt = 0; G.impactApplied = false; G.settleSteps = 0; G.connRounds = 0;
 }
 
@@ -885,25 +886,20 @@ async function bootNetwork() {
 function newMatch() {
   SOLO.recorded = false;
   SOLO.pausedAt = null;
-  /* 맵도 스폰도 **정규 생성기**를 쓴다 (`docs/mapgen.md`). 예전에는 샌드박스 프리셋
-     `hills` 를 썼는데, 그러면 로컬에서 보는 지형이 실제 매치의 지형이 아니었다 —
-     지질 구역도 스폰 선택도 프로토타입에만 없었다. */
-  T.CFG.seed = G.seed;
-  T.grid.set(CanonMapgen.buildMap(G.seed));
-  T.connectivity(); T.markAll(); T.setStep(0);
-  for (let s = 0; s < 40000; s++) if (T.step().mobile === 0) break;
-
-  const n = G.cfgPlayers.length;
-  G.spawnCells = CanonMapgen.chooseSpawnCells(T.grid, n);
+  if (SOLO.operation) G.seed = nextMatchSeed(crypto.getRandomValues(new Uint32Array(1))[0], G.seed);
+  const specs = G.cfgPlayers.map((config, slot) => ({
+    name: SOLO.operation ? (slot === 0 ? "당신" : `포대 ${String(slot).padStart(2, "0")}`) : NAMES[slot], isAI: config.ai,
+  }));
+  const { state } = CanonMatch.createMatch(G.seed, specs);
+  $("battleTitle").title = `전장 시드 ${G.seed} · 지형 v${CanonMapgen.MAPGEN_VERSION} · 매치 v${CanonMatch.MATCH_VERSION}`;
+  const n = specs.length;
+  G.spawnCells = state.spawnCells;
   G.spawnXs = G.spawnCells.map((cell) => cell * P.CELL_SUBPX);
-  G.players = [];
-  for (let i = 0; i < n; i++) {
-    G.players.push(M.makePlayer(i, SOLO.operation ? (i === 0 ? "당신" : `포대 ${String(i).padStart(2, "0")}`) : NAMES[i], G.cfgPlayers[i].ai, G.spawnXs[i]));
-  }
-  M.beginRound(G.players, G.spawnCells, 0);
+  G.players = state.players;
+  BATTLE_VIEW.top = 0;
   G.round = 1; G.turnNo = 0; G.roundTurn = 0; G.cur = 0; G.wind = 0; G.windDelta = 0;
   G.trails.length = 0; G.legs = []; G.flightTracks = []; G.dets = [];
-  G.flightTick = 0; G.flightEnd = 0; G.flightStartedAt = 0; G.flightDuration = 0;
+  G.flightTick = 0; G.flightEnd = 0; G.flightStartedAt = 0;
   G.aiFireAt = 0; G.impactApplied = false;
   applyTurnSeed();
   resetPresentation(G.seed);
@@ -933,7 +929,7 @@ function beginTurn() {
     pl = G.players[G.cur];
   }
   if (pl.isAI) {
-    pl.intent = aiIntent(G.players, pl, G.wind, G.turnNo, G.seed, G.aiLevel);
+    pl.intent = aiIntent(G.players, pl, G.wind, G.turnNo, G.seed, G.aiLevel, G.roundTurn);
     G.aiFireAt = performance.now() + 1100;
   } else {
     G.aiFireAt = 0;
@@ -980,18 +976,6 @@ function commitAim() {
 }
 
 /* ══════════════════ 해결 ══════════════════ */
-function buildFlightTimeline(legs) {
-  const mainEnd = new Map(), tracks = [];
-  for (const leg of legs) {
-    let start = 0;
-    const duration = Math.max(1, leg.pts.length - 1);
-    if (leg.kind === "main") mainEnd.set(leg.slot, duration);
-    else start = mainEnd.get(leg.slot) || 0;
-    tracks.push({ leg, start, end: start + duration, duration });
-  }
-  return tracks;
-}
-
 function resolve() {
   const shooter = G.players[G.cur];
   if (!shooter || !shooter.alive) return;
@@ -1009,7 +993,6 @@ function resolve() {
   G.flightTick = 0;
   G.flightEnd = G.flightTracks.reduce((n, tr) => Math.max(n, tr.end), 0);
   G.flightStartedAt = performance.now();
-  G.flightDuration = Math.min(9000, Math.max(2400, G.flightEnd * 1000 / 36));
   G.phase = "RESOLVE";
   $("bFire").disabled = true;
   syncAim(); syncWeapons();
@@ -1121,7 +1104,7 @@ function startNextRound() {
   /* 지형은 라운드를 넘어 유지되므로 스폰을 **현재 격자에서 다시 고른다.**
      회전은 라운드 번호에서 온다 — 자리마다 발밑이 달라 슬롯 고정이면 유불리가 된다
      (`docs/mapgen.md` §9.1). */
-  G.spawnCells = CanonMapgen.chooseSpawnCells(T.grid, G.players.length);
+  G.spawnCells = CanonMapgen.chooseSpawnCells(T.grid, G.players.length, G.seed);
   G.spawnXs = G.spawnCells.map((cell) => cell * P.CELL_SUBPX);
   M.beginRound(G.players, G.spawnCells, G.round - 1);
   G.roundTurn = 0;
@@ -1265,7 +1248,7 @@ function showSetup() {
   for (const lv of [["easy", "쉬움"], ["normal", "보통"], ["hard", "어려움"]])
     h += `<button data-ai="${lv[0]}" ${G.aiLevel === lv[0] ? 'class="on"' : ""}>${lv[1]}</button>`;
   h += `</div><div class="setrow"><span class="sl">맵 시드</span>`
-    + `<input type="number" id="setSeed" value="${G.seed}" min="0" max="255" `
+    + `<input type="number" id="setSeed" value="${G.seed}" min="0" max="4294967295" `
     + `style="flex:1;background:var(--panel2);border:1px solid var(--line);border-radius:3px;color:var(--ink);padding:4px 6px;font-family:ui-monospace">`
     + `<button data-rnd="1">±</button></div>`
     + `<div class="row" style="margin-top:12px"><button data-cancel="1">돌아가기</button><button class="wide fire" data-start="1">교전 시작 →</button></div>`;
@@ -1284,10 +1267,10 @@ function showSetup() {
   });
   box.querySelectorAll("[data-ai]").forEach((b) => b.onclick = () => { G.aiLevel = b.dataset.ai; showSetup(); });
   box.querySelector("[data-rnd]").onclick = () => {
-    G.seed = (G.seed * 31 + 17) & 0xFF; $("setSeed").value = G.seed;
+    G.seed = nextMatchSeed(crypto.getRandomValues(new Uint32Array(1))[0], G.seed); $("setSeed").value = G.seed;
   };
   box.querySelector("[data-start]").onclick = () => {
-    G.seed = Math.max(0, Math.min(255, parseInt($("setSeed").value, 10) || 0));
+    G.seed = Math.max(0, Math.min(4294967295, parseInt($("setSeed").value, 10) || 0));
     SOLO.operation = null;
     closeModal(); enterBattle("사용자 설정 매치"); newMatch();
     $("battleGuide").hidden = true;
@@ -1726,13 +1709,10 @@ function drawTank(pl, now) {
 function drawFlight() {
   if (G.phase !== "RESOLVE") return;
   for (const tr of G.flightTracks) {
-    const local = G.flightTick - tr.start, pts = tr.leg.pts;
-    if (local < 0 || local > tr.duration || pts.length === 0) continue;
-    const sample = Math.min(local, pts.length - 1), upto = Math.floor(sample);
-    const next = Math.min(upto + 1, pts.length - 1), blend = sample - upto;
-    const p0 = pts[upto], p1 = pts[next];
-    const X = sx(p0.x) + (sx(p1.x) - sx(p0.x)) * blend;
-    const Y = sy(p0.y) + (sy(p1.y) - sy(p0.y)) * blend;
+    const sample = sampleFlightTrack(tr, G.flightTick);
+    if (!sample) continue;
+    const { upto, blend } = sample;
+    const X = sx(sample.x), Y = sy(sample.y);
     const from = Math.max(0, upto - 66), brightFrom = Math.max(from, upto - 16);
     octx.strokeStyle = TEAM[tr.leg.slot]; octx.globalAlpha = .24; octx.lineWidth = 1;
     octx.beginPath();
@@ -1827,6 +1807,11 @@ function drawEffects(now) {
 
 function drawOverlay() {
   const now = FX.lastNow;
+  const visibleHeight = BATTLE_VIEW.wide && innerWidth > 760 ? W * 9 / 21 : H;
+  const active = G.players[G.cur];
+  const targetTop = active ? Math.max(0, Math.min(H - visibleHeight, sy(active.y) - visibleHeight * .7)) : 0;
+  BATTLE_VIEW.top = REDUCED_MOTION ? targetTop : BATTLE_VIEW.top + (targetTop - BATTLE_VIEW.top) * .15;
+  $("stage").style.setProperty("--view-top", `${-BATTLE_VIEW.top / visibleHeight * 100}%`);
   octx.clearRect(0, 0, W, H);
   drawTerrainLight(now);
   drawAtmosphere(now);
@@ -1868,24 +1853,8 @@ function drawOverlay() {
   for (const pl of G.players) drawTank(pl, now);
   drawFlight();
 
-  /* 바람 게이지 — 현재 수치는 항상, 측풍계가 있으면 다음 턴 예보까지 표시 */
-  const cxg = W / 2, wy = 15, half = 70;
-  octx.strokeStyle = "rgba(232,223,210,.2)"; octx.lineWidth = 1;
-  octx.beginPath(); octx.moveTo(cxg - half, wy); octx.lineTo(cxg + half, wy); octx.stroke();
-  octx.beginPath(); octx.moveTo(cxg, wy - 4); octx.lineTo(cxg, wy + 4); octx.stroke();
-  const wmax = Math.max(1, P.CFG.windMax);
-  const gust = Math.abs(G.windDelta) >= 2;
-  octx.strokeStyle = gust || Math.abs(G.wind) > wmax * .6 ? "#FF3D9E" : "#D99A5B"; octx.lineWidth = 3;
-  octx.beginPath(); octx.moveTo(cxg, wy); octx.lineTo(cxg + (G.wind / wmax) * half, wy); octx.stroke();
-  const me = G.players[G.cur];
-  const forecastWind = nextWindValue(G.seed, G.turnNo + 1, G.wind);
-  const forecast = me && me.items && me.items.anemo > 0
-    ? ` · NEXT ${forecastWind >= 0 ? "+" : ""}${forecastWind}` : "";
-  octx.fillStyle = gust ? "#FF80B8" : "#D99A5B"; octx.font = "bold 9px ui-monospace"; octx.textAlign = "center";
-  octx.fillText(`WIND ${G.wind >= 0 ? "+" : ""}${G.wind}${gust ? ` · GUST ${G.windDelta >= 0 ? "+" : ""}${G.windDelta}` : ""}${forecast}`, cxg, wy + 12);
-
   drawEffects(now);
-  drawTankScope();
+  drawTrackingScope(now);
 
   if (mouse.in && G.phase === "AIM") {
     octx.strokeStyle = "rgba(232,223,210,.42)"; octx.lineWidth = .7;
@@ -1895,19 +1864,42 @@ function drawOverlay() {
   }
 }
 
-function drawTankScope() {
+function drawTrackingScope(now) {
   const player = G.players[G.cur];
   if (!scopeOpen || !player) return;
-  const sourceWidth = 52.5, sourceHeight = 28.5;
-  const left = Math.max(0, Math.min(W - sourceWidth, sx(player.x) - sourceWidth / 2));
-  const top = Math.max(0, Math.min(H - sourceHeight, sy(player.y) - 22));
-  scopeContext.clearRect(0, 0, scopeCanvas.width, scopeCanvas.height);
-  scopeContext.drawImage(ter, left, top, sourceWidth, sourceHeight, 0, 0, scopeCanvas.width, scopeCanvas.height);
-  scopeContext.drawImage(ovl, left * ENTITY_SCALE, top * ENTITY_SCALE, sourceWidth * ENTITY_SCALE, sourceHeight * ENTITY_SCALE,
-    0, 0, scopeCanvas.width, scopeCanvas.height);
-  $("scopeUnit").textContent = `UNIT ${String(player.slot + 1).padStart(2, "0")} · ${Math.max(0, player.hp)} HP`;
-  $("scopeUnit").style.color = TEAM[player.slot];
-  $("scopeCondition").textContent = !player.alive ? "차체 파괴" : player.buried ? "매몰 상태" : player.hp < 45 ? "장갑 손상" : "장갑 정상";
+  const camera = scopeCamera({ player, phase: G.phase, tracks: G.flightTracks, tick: G.flightTick,
+    impacts: G.dets, impactAt: G.impactAt, now, cell: CELL, mapWidth: W, mapHeight: H });
+  const scale = scopeCanvas.width / camera.width;
+  const left = Math.max(0, camera.left), top = Math.max(0, camera.top);
+  const width = Math.min(W, camera.left + camera.width) - left;
+  const height = Math.min(H, camera.top + camera.height) - top;
+  scopeContext.fillStyle = "#382f38";
+  scopeContext.fillRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+  if (width > 0 && height > 0) {
+    const destinationX = (left - camera.left) * scale, destinationY = (top - camera.top) * scale;
+    scopeContext.drawImage(ter, left, top, width, height, destinationX, destinationY, width * scale, height * scale);
+    scopeContext.drawImage(ovl, left * ENTITY_SCALE, top * ENTITY_SCALE, width * ENTITY_SCALE, height * ENTITY_SCALE,
+      destinationX, destinationY, width * scale, height * scale);
+  }
+  for (const projectile of camera.projectiles) {
+    if (projectile.x >= 0 && projectile.x < W && projectile.y >= 0 && projectile.y < H) continue;
+    scopeContext.save(); scopeContext.fillStyle = "#fff4e0"; scopeContext.shadowColor = "#fff4e0"; scopeContext.shadowBlur = 8;
+    scopeContext.beginPath(); scopeContext.arc((projectile.x - camera.left) * scale, (projectile.y - camera.top) * scale,
+      1.7 * scale, 0, Math.PI * 2); scopeContext.fill(); scopeContext.restore();
+  }
+  const magnification = Number((210 / camera.width).toFixed(1));
+  const modeLabel = camera.mode === "flight" ? "TRACK" : camera.mode === "aim" ? "OPTIC" : "IMPACT";
+  $("tankScope").dataset.mode = camera.mode;
+  $("scopeMode").textContent = `${modeLabel} ×${magnification}`;
+  $("scopeUnit").style.color = TEAM[camera.slot];
+  if (camera.mode === "aim") {
+    $("scopeUnit").textContent = `UNIT ${String(player.slot + 1).padStart(2, "0")} · ${Math.max(0, player.hp)} HP`;
+    $("scopeCondition").textContent = !player.alive ? "차체 파괴" : player.buried ? "매몰 상태" : player.hp < 45 ? "장갑 손상" : "장갑 정상";
+  } else {
+    $("scopeUnit").textContent = camera.mode === "flight" ? `TRACK · ${camera.count}발` : camera.mode === "exit" ? "OUT OF FIELD" : `IMPACT · ${camera.count}곳`;
+    $("scopeCondition").textContent = camera.mode === "flight" ? camera.outside ? "전장 밖 추적" : "포탄 추적 중"
+      : camera.mode === "exit" ? "전장 이탈" : "폭발·붕괴 관측";
+  }
 }
 
 /* ══════════════════ 입력 ══════════════════ */
@@ -1921,18 +1913,19 @@ function syncChargeUi(pl) {
   hud.classList.toggle("active", Boolean(active));
   hud.classList.toggle("reached", Boolean(active && power >= target));
   hud.classList.toggle("locked", locked);
-  meter.querySelector("i").style.width = `${Math.max(0, Math.min(100, power / 10))}%`;
-  $("chargePin").style.left = `${Math.max(0, Math.min(100, target / 10))}%`;
+  meter.querySelector("i").style.width = `${Math.max(0, Math.min(100, power / P.MAX_POWER * 100))}%`;
+  $("chargePin").style.left = `${Math.max(0, Math.min(100, target / P.MAX_POWER * 100))}%`;
   $("chargeNow").textContent = String(power).padStart(4, "0");
   $("chargeTargetValue").textContent = String(target).padStart(4, "0");
-  $("chargeInstruction").textContent = active ? "충전 중 · SPACE를 놓으면 발사" : "파워 바를 클릭해 목표 핀 설정";
+  $("chargeInstruction").textContent = active ? "충전 중 · SPACE를 놓으면 발사" : `목표 핀 설정 · MAX ${P.MAX_POWER}`;
   meter.setAttribute("aria-valuenow", String(target));
-  meter.setAttribute("aria-valuetext", `목표 파워 ${target}`);
+  meter.setAttribute("aria-valuemax", String(P.MAX_POWER));
+  meter.setAttribute("aria-valuetext", `목표 파워 ${target} / ${P.MAX_POWER}`);
   $("bFire").querySelector("span").textContent = active ? "파워 충전 중" : "발사 명령";
 }
 function setChargeTarget(pl, value) {
   if (!pl || !canControl(pl) || G.phase !== "AIM") return;
-  const target = Math.max(0, Math.min(1000, Math.round(value / 5) * 5));
+  const target = Math.max(0, Math.min(P.MAX_POWER, Math.round(value / 5) * 5));
   if (CHARGE.targetBySlot[pl.slot] === target) return;
   CHARGE.targetBySlot[pl.slot] = target;
   AudioFx.ui();
@@ -1941,7 +1934,7 @@ function setChargeTarget(pl, value) {
 function setChargeTargetFromPointer(e) {
   const pl = G.players[G.cur], meter = $("chargeMeter"), rect = meter.getBoundingClientRect();
   if (!pl || rect.width <= 0) return;
-  setChargeTarget(pl, (e.clientX - rect.left) / rect.width * 1000);
+  setChargeTarget(pl, (e.clientX - rect.left) / rect.width * P.MAX_POWER);
 }
 function cancelPowerCharge(update = true) {
   if (!CHARGE.active) return;
@@ -1961,7 +1954,7 @@ function updatePowerCharge(now) {
     cancelPowerCharge();
     return;
   }
-  const power = Math.min(1000, Math.floor((now - CHARGE.startedAt) * 1000 / POWER_CHARGE_MS));
+  const power = Math.min(P.MAX_POWER, Math.floor((now - CHARGE.startedAt) * POWER_CHARGE_PER_SECOND / 1000));
   if (power !== CHARGE.lastPower) {
     CHARGE.lastPower = power; pl.power = power; syncAim();
   }
@@ -2026,7 +2019,7 @@ chargeTrack.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft" || e.key === "ArrowDown") target -= step;
   else if (e.key === "ArrowRight" || e.key === "ArrowUp") target += step;
   else if (e.key === "Home") target = 0;
-  else if (e.key === "End") target = 1000;
+  else if (e.key === "End") target = P.MAX_POWER;
   else return;
   e.preventDefault(); e.stopPropagation(); setChargeTarget(pl, target);
 });
@@ -2051,7 +2044,7 @@ stage.addEventListener("wheel", (e) => {
   if (G.phase !== "AIM" || !canControl(pl) || CHARGE.active || e.deltaY === 0) return;
   e.preventDefault();
   const step = e.shiftKey ? 5 : 25;
-  pl.power = Math.max(0, Math.min(1000, pl.power - Math.sign(e.deltaY) * step));
+  pl.power = Math.max(0, Math.min(P.MAX_POWER, pl.power - Math.sign(e.deltaY) * step));
   syncAim();
 }, { passive: false });
 
@@ -2066,7 +2059,7 @@ addEventListener("keydown", (e) => {
   switch (e.key) {
     case "ArrowLeft":  pl.angle10 = Math.min(1800, pl.angle10 + (f ? 1 : 5)); break;
     case "ArrowRight": pl.angle10 = Math.max(0, pl.angle10 - (f ? 1 : 5)); break;
-    case "ArrowUp":    pl.power = Math.min(1000, pl.power + (f ? 1 : 5)); break;
+    case "ArrowUp":    pl.power = Math.min(P.MAX_POWER, pl.power + (f ? 1 : 5)); break;
     case "ArrowDown":  pl.power = Math.max(0, pl.power - (f ? 1 : 5)); break;
     case " ":          if (!e.repeat) beginPowerCharge(pl); break;
     default:
@@ -2090,7 +2083,29 @@ function selectWeapon(id) {
 }
 
 /* ══════════════════ UI 동기화 ══════════════════ */
+function syncWindHud() {
+  const indicator = $("windHud");
+  const player = G.players[G.cur];
+  const gust = Math.abs(G.windDelta) >= 2;
+  const ratio = Math.max(-1, Math.min(1, G.wind / Math.max(1, P.CFG.windMax)));
+  const details = [];
+  if (gust) details.push(`돌풍 ${G.windDelta >= 0 ? "+" : ""}${G.windDelta}`);
+  if (player?.items.anemo > 0) {
+    const forecast = nextWindValue(G.seed, G.turnNo + 1, G.wind);
+    details.push(`NEXT ${forecast >= 0 ? "+" : ""}${forecast}`);
+  }
+  indicator.classList.toggle("gust", gust || Math.abs(ratio) > .6);
+  $("combatHud").classList.toggle("crowded-hud", G.players.length > 2);
+  indicator.style.setProperty("--wind-start", `${50 + Math.min(0, ratio) * 50}%`);
+  indicator.style.setProperty("--wind-width", `${Math.abs(ratio) * 50}%`);
+  $("windReading").textContent = `${G.wind < 0 ? "←" : G.wind > 0 ? "→" : "·"} WIND ${G.wind > 0 ? "+" : ""}${G.wind}`;
+  $("windDetail").textContent = details.join(" · ");
+  indicator.setAttribute("aria-label", `현재 바람 ${G.wind < 0 ? "왼쪽" : G.wind > 0 ? "오른쪽" : "없음"} ${Math.abs(G.wind)}${details.length ? ` · ${details.join(" · ")}` : ""}`);
+}
+
 function syncAim() {
+  syncWindHud();
+  $("iPower").max = String(P.MAX_POWER);
   const pl = G.players[G.cur];
   if (!pl) return;
   const locked = G.phase !== "AIM" || !canControl(pl);
@@ -2122,7 +2137,7 @@ $("iAngle").addEventListener("input", (e) => {
 });
 $("iPower").addEventListener("input", (e) => {
   const v = parseInt(e.target.value, 10); const pl = G.players[G.cur];
-  if (!isNaN(v) && pl) { pl.power = Math.max(0, Math.min(1000, v)); syncAim(); }
+  if (!isNaN(v) && pl) { pl.power = Math.max(0, Math.min(P.MAX_POWER, v)); syncAim(); }
 });
 $("bFire").onclick = commitAim;
 
@@ -2247,10 +2262,8 @@ function frame() {
     const pl = G.players[G.cur];
     if (pl && pl.isAI && G.aiFireAt > 0 && now >= G.aiFireAt) resolve();
   } else if (G.phase === "RESOLVE") {
-    const duration = G.fast ? Math.min(360, G.flightDuration) : G.flightDuration;
-    const progress = duration <= 0 ? 1 : Math.min(1, (now - G.flightStartedAt) / duration);
-    G.flightTick = G.flightEnd * progress;
-    if (progress >= 1) onAllLegsDone();
+    G.flightTick = flightTickAt(now - G.flightStartedAt, G.flightEnd, G.fast);
+    if (G.flightTick >= G.flightEnd) onAllLegsDone();
   } else if (G.phase === "IMPACT") {
     if (now - G.impactAt >= (G.fast ? 20 : 92)) applyImpact();
   } else if (G.phase === "SETTLE") {

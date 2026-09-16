@@ -13,11 +13,13 @@ import {
   W,
 } from "./terrain.ts";
 
-export const MAPGEN_VERSION = 2;
+export const MAPGEN_VERSION = 3;
 export const NOISE_SHIFT = 7;
-export const SURFACE_BASE = 170;
-export const SURFACE_AMP = 60;
+export const SURFACE_BASE = 262;
+export const SURFACE_AMP = 70;
 export const BEDROCK_Y = 522;
+export const SPAWN_MIN_GAP = 36;
+export const SPAWN_MAX_RELIEF = 12;
 
 const NOISE_MASK = 127;
 const NOISE_SALT = 0x4d47;
@@ -41,13 +43,25 @@ function fillVertical(
   for (let y = start; y <= end; y++) setCell(target, x, y, material);
 }
 
-function generatedSurface(mapSeed: number, x: number): number {
-  const sample = x >> NOISE_SHIFT;
-  const fraction = x & NOISE_MASK;
-  const a = hash32(mapSeed, sample, NOISE_SALT, 0) & 0xffff;
-  const b = hash32(mapSeed, sample + 1, NOISE_SALT, 0) & 0xffff;
-  const noise = a + (((b - a) * fraction) >> NOISE_SHIFT);
-  return clampInt(SURFACE_BASE + (((noise - 32768) * SURFACE_AMP) >> 16), 96, 260);
+function peakAt(column: number, center: number, width: number, amplitude: number): number {
+  return floorDiv(clampInt(width - iabs(column - center), 0, width) * amplitude, width);
+}
+
+function generatedSurface(mapSeed: number, column: number): number {
+  const sample = column >> NOISE_SHIFT;
+  const fraction = column & NOISE_MASK;
+  const start = hash32(mapSeed, sample, NOISE_SALT, 0) & 0xffff;
+  const end = hash32(mapSeed, sample + 1, NOISE_SALT, 0) & 0xffff;
+  const noise = start + (((end - start) * fraction) >> NOISE_SHIFT);
+  const mainSeed = hash32(mapSeed, 0, 0x504b, 0);
+  const sideSeed = hash32(mapSeed, 1, 0x504b, 0);
+  const valleySeed = hash32(mapSeed, 2, 0x504b, 0);
+  const mainCenter = clampInt(240 + (mainSeed & 511), 240, 720);
+  const sideCenter = (mainCenter < 480 ? 770 : 190) + ((sideSeed >>> 16) & 63) - 31;
+  const mainPeak = peakAt(column, mainCenter, 145 + ((mainSeed >>> 9) & 127), 148 + ((mainSeed >>> 16) & 63));
+  const sidePeak = peakAt(column, sideCenter, 120 + (sideSeed & 63), 76 + ((sideSeed >>> 6) & 47));
+  const valley = peakAt(column, floorDiv(mainCenter + sideCenter, 2), 110 + (valleySeed & 63), 32 + ((valleySeed >>> 6) & 31));
+  return clampInt(SURFACE_BASE + (((noise - 32768) * SURFACE_AMP) >> 16) - mainPeak - sidePeak + valley, 72, 342);
 }
 
 /* ══ 지질 구역 (§3.1) ═════════════════════════════════════════════════════
@@ -57,8 +71,6 @@ function generatedSurface(mapSeed: number, x: number): number {
    이었다. 그래서 실측으로 갈라놓은 안식각 26.6°/40.3°/44.2° 가 전술적으로 아무 일도
    하지 않았다 — 어디를 파도 같은 순서로 같은 것이 나오니 **서 있는 자리가 의미가 없었다.**
 
-   **표면 형상은 건드리지 않는다.** 바뀌는 것은 지표 아래 두께뿐이라 새로 노출되는 경사가
-   없고, 따라서 초기 정착 비용이 늘지 않는다 (실측 §11). 차이는 **파헤쳤을 때** 드러난다 —
    모래 분지를 파면 26.6° 로 넓게 흘러내리고, 점토 대지를 파면 40.3° 벽이 그대로 선다. */
 
 /** 구역 프로파일. 위에서부터의 두께이고, 남는 깊이는 `ROCK` 이 채운다. */
@@ -134,7 +146,11 @@ function buildLayers(target: Uint8Array, surface: Int16Array, mapSeed: number): 
     const pa = PROVINCES[p.a];
     const pb = PROVINCES[p.b];
     const bands: number[] = [];
-    for (let i = 0; i < 5; i++) bands.push(blendBand(pa.bands[i], pb.bands[i], p.t));
+    const leftRelief = iabs(surface[clampInt(x - 6, 0, W - 1)] - surface[x]);
+    const rightRelief = iabs(surface[clampInt(x + 6, 0, W - 1)] - surface[x]);
+    const relief = leftRelief > rightRelief ? leftRelief : rightRelief;
+    const mantleScale = relief > 3 ? 0 : relief === 3 ? 16 : 64;
+    for (let i = 0; i < 5; i++) bands.push(floorDiv(blendBand(pa.bands[i], pb.bands[i], p.t) * mantleScale, 64));
     const bedrockDepth = blendBand(pa.bedrockDepth, pb.bedrockDepth, p.t);
 
     let y = surface[x];
@@ -216,40 +232,45 @@ export function buildMap(mapSeed: number): Uint8Array {
   return target;
 }
 
-export function chooseSpawnCells(source: Uint8Array, playerCount: number): number[] {
+export function chooseSpawnCells(source: Uint8Array, playerCount: number, spawnSeed = 0): number[] {
   if (source.length !== N) throw new RangeError("grid length must be 960 * 540");
   if (playerCount < 2 || playerCount > 6) throw new RangeError("playerCount must be 2..6");
 
+  const surface = new Int16Array(W);
+  for (let column = 0; column < W; column++) surface[column] = surfaceCellY(source, column);
   const selected: number[] = [];
+  const layout = hash32(spawnSeed, playerCount, 0x5a17, 0) % 3;
+  const center = 80 + hash32(spawnSeed, 0, 0x5a17, 1) % (W - 160);
+  const clusterRadius = 48 + playerCount * 24;
   for (let slot = 0; slot < playerCount; slot++) {
-    const target = floorDiv((slot + 1) * W, playerCount + 1);
-    const start = clampInt(target - 72, 16, W - 17);
-    const end = clampInt(target + 72, 16, W - 17);
+    const target = 32 + floorDiv(slot * (W - 64), playerCount - 1);
     let bestX = -1;
     let bestScore = 0x7fffffff;
-
-    for (let x = start; x <= end; x++) {
-      let separated = true;
-      for (const other of selected) {
-        if (iabs(x - other) < 96) {
-          separated = false;
-          break;
+    for (let searchPass = 0; searchPass < 2 && bestX < 0; searchPass++) {
+      for (let column = 20; column < W - 20; column++) {
+        if (surface[column] >= H - 12) continue;
+        let separated = true;
+        for (const other of selected) {
+          if (iabs(column - other) < SPAWN_MIN_GAP) { separated = false; break; }
+        }
+        if (!separated) continue;
+        const relief = iabs(surface[column - 6] - surface[column]) + iabs(surface[column + 6] - surface[column]);
+        if (searchPass === 0 && relief > SPAWN_MAX_RELIEF) continue;
+        const distance = layout === 0 ? iabs(column - center) - clusterRadius : layout === 1 ? iabs(column - target) - 64 : 0;
+        const penalty = distance > 0 ? distance : 0;
+        const score = penalty * 65536 + (hash32(spawnSeed, column, slot, 0x5a17) & 65535);
+        if (score < bestScore) {
+          bestScore = score;
+          bestX = column;
         }
       }
-      if (!separated) continue;
-
-      const y = surfaceCellY(source, x);
-      const flatness = iabs(surfaceCellY(source, x - 6) - y) + iabs(surfaceCellY(source, x + 6) - y);
-      const score = flatness * 256 + iabs(x - target);
-      if (score < bestScore) {
-        bestScore = score;
-        bestX = x;
-      }
     }
-
-    selected.push(bestX < 0 ? clampInt(target, 16, W - 17) : bestX);
+    if (bestX < 0) throw new RangeError("not enough separated ground for spawning");
+    selected.push(bestX);
   }
-
-  selected.sort((a, b) => a - b);
+  for (let index = selected.length - 1; index > 0; index--) {
+    const other = hash32(spawnSeed, index, 0x5a17, 2) % (index + 1);
+    const previous = selected[index]; selected[index] = selected[other]; selected[other] = previous;
+  }
   return selected;
 }
