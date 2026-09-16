@@ -8,6 +8,7 @@
 <meta name="description" content="무너지는 지형 위의 턴제 포병전. AI 작전에 도전하고, 한 발로 전장을 바꾸세요.">
 <link rel="stylesheet" href="./interface.css">
 <link rel="stylesheet" href="./battlefield.css">
+<link rel="stylesheet" href="./combat.css">
 </head>
 <body>
 <section id="homeScreen" aria-label="작전실">
@@ -54,6 +55,7 @@
       <div id="playerStrip"></div>
       <div id="phaseHud">AIM · ROUND 01 · TURN 01</div>
       <div id="windHud" role="status" aria-label="현재 바람">
+        <div class="wind-airflow" aria-hidden="true"><span></span><span></span><span></span><b>W</b><em>E</em></div>
         <div class="wind-meter" aria-hidden="true"><i></i></div>
         <strong id="windReading">WIND 0</strong><small id="windDetail"></small>
       </div>
@@ -136,7 +138,9 @@ import * as CanonMapgen from "../multiplayer/sim/mapgen.js";
 import { aiIntent, aiShop } from "./ai.js";
 import { OPERATIONS, loadProfile, normalizeProfile, recordResult, saveProfile, nextMatchSeed } from "./operations.js";
 import { ENTITY_SCALE, buildGeology, terrainRelief, drawBackdrop, drawArtillery } from "./battlefield-art.js";
-import { sampleFlightTrack, scopeCamera } from "./scope-camera.js";
+import { shellStyle, projectilePose, drawProjectile, createEffectSprites, drawFlightTrail, drawMuzzleFlash,
+  drawImpact, drawCombatParticle, sampleSurface, drawWindField } from "./combat-art.js";
+import { scopeCamera } from "./scope-camera.js";
 import { buildFlightTimeline, flightTickAt } from "./flight-playback.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
@@ -403,8 +407,9 @@ function canControl(pl) {
 }
 
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const EFFECT_SPRITES = createEffectSprites(() => document.createElement("canvas"));
 const FX = {
-  lastNow: performance.now(), particles: [], explosions: [], muzzles: [], dust: [],
+  lastNow: performance.now(), particles: [], explosions: [], muzzles: [], dust: [], surface: [],
   recoilUntil: new Float64Array(6), hitUntil: new Float64Array(6),
   tankTilt: new Float32Array(6),
   shakeAt: -1, shakePower: 0, shakeDuration: 720, focusX: W / 2, focusY: H / 2,
@@ -989,7 +994,8 @@ function resolve() {
   const r = M.resolveTurn(G.players, G.wind);
   for (const e of r.events) logEvent(e);
   G.legs = r.legs; G.dets = r.dets;
-  G.flightTracks = buildFlightTimeline(G.legs);
+  G.flightTracks = buildFlightTimeline(G.legs).map((track) => ({ ...track,
+    weaponId: r.events.find((event) => event.t === "fire" && event.slot === track.leg.slot)?.weaponId ?? 0 }));
   G.flightTick = 0;
   G.flightEnd = G.flightTracks.reduce((n, tr) => Math.max(n, tr.end), 0);
   G.flightStartedAt = performance.now();
@@ -1427,6 +1433,7 @@ function paintRow(y) {
   }
 }
 function renderTerrain() {
+  if (renderAll || dirtyAny) FX.surface = sampleSurface(grid, W, H);
   if (renderAll) {
     for (let y = 0; y < H; y++) paintRow(y);
     tctx.putImageData(img, 0, 0); renderAll = false; dirtyRow.fill(0); dirtyAny = false;
@@ -1444,22 +1451,22 @@ function renderTerrain() {
 const sx = (v) => v / CELL, sy = (v) => v / CELL;
 
 function addParticle(p) {
-  if (FX.particles.length < 1200) FX.particles.push(p);
+  if (!REDUCED_MOTION && FX.particles.length < 1200) FX.particles.push({ ...p, age: 0 });
 }
 
 function resetFxClock(now) {
   const dt = Math.min(.05, Math.max(0, (now - FX.lastNow) / 1000));
   FX.lastNow = now;
-  const windDir = G.wind === 0 ? .18 : Math.sign(G.wind), windSpeed = 5 + Math.abs(G.wind) * 10;
+  const windDir = Math.sign(G.wind), windSpeed = Math.abs(G.wind) * 10;
   if (!REDUCED_MOTION) {
     for (const d of FX.dust) {
       d.x += windDir * windSpeed * d.speed * dt;
-      d.y += Math.sin((now + d.phase) * .00042) * .07;
+      d.y += Math.sin((now + d.phase) * .00042) * Math.min(1, Math.abs(G.wind)) * dt * 3;
       if (d.x < -8) d.x = W + 8; else if (d.x > W + 8) d.x = -8;
     }
   }
   for (let i = FX.particles.length - 1; i >= 0; i--) {
-    const p = FX.particles[i]; p.life -= dt;
+    const p = FX.particles[i]; p.life -= dt; p.age += dt;
     if (p.life <= 0) { FX.particles.splice(i, 1); continue; }
     if (!REDUCED_MOTION) {
       p.x += p.vx * dt; p.y += p.vy * dt;
@@ -1479,7 +1486,8 @@ function startFireFx(events) {
   for (const pl of G.players) {
     if (!pl.alive || !pl.intent) continue;
     const pose = P.shotPose(pl, pl.intent.angle10), rad = pose.angle10 / 10 * Math.PI / 180;
-    FX.muzzles.push({ x: sx(pose.x), y: sy(pose.y), dx: Math.cos(rad), dy: -Math.sin(rad), slot: pl.slot, at: now });
+    FX.muzzles.push({ x: sx(pose.x), y: sy(pose.y), dx: Math.cos(rad), dy: -Math.sin(rad), slot: pl.slot,
+      weaponId: events.find((event) => event.t === "fire" && event.slot === pl.slot)?.weaponId ?? 0, at: now });
     FX.recoilUntil[pl.slot] = now + 180; maxPower = Math.max(maxPower, pl.intent.power);
     for (let i = 0; i < 7; i++) {
       const spread = (i - 3) * .16;
@@ -1497,7 +1505,7 @@ function startImpactFx(dets) {
     const deposit = det.weapon.kind === "deposit", nuclear = det.weapon.id === Wp.NUCLEAR_WEAPON_ID;
     const size = Math.max(10, det.weapon.carveCells || det.weapon.depositCells || 12);
     const x = sx(det.x), y = sy(det.y);
-    FX.explosions.push({ x, y, size, deposit, nuclear, at: now });
+    FX.explosions.push({ x, y, size, deposit, nuclear, weaponId: det.weapon.id, at: now });
     if (size > largestSize) { largest = det; largestSize = size; }
     const count = nuclear ? 190 : Math.min(112, 24 + Math.round(size * 1.25));
     for (let i = 0; i < count; i++) {
@@ -1580,7 +1588,10 @@ function updateCamera(now) {
 }
 
 function drawAtmosphere(now) {
-  const dir = G.wind === 0 ? .25 : Math.sign(G.wind), stretch = 1.5 + Math.abs(G.wind) * 1.7;
+  drawWindField(octx, { width: W, height: H, seed: G.seed, now, wind: G.wind, grid,
+    surface: FX.surface, sprites: EFFECT_SPRITES, reducedMotion: REDUCED_MOTION });
+  if (REDUCED_MOTION) return;
+  const dir = Math.sign(G.wind), stretch = 1.5 + Math.abs(G.wind) * 1.7;
   octx.lineCap = "round";
   for (const d of FX.dust) {
     const column = Math.floor(d.x), row = Math.floor(d.y);
@@ -1594,7 +1605,8 @@ function drawAtmosphere(now) {
 
 function drawTerrainLight(now) {
   const explosions = FX.explosions.filter((explosion) => !explosion.deposit && !explosion.shield
-    && now - explosion.at < 650);
+    && now - explosion.at < 650).concat(FX.muzzles.filter((muzzle) => now - muzzle.at < 180)
+      .map((muzzle) => ({ ...muzzle, size: 9 })));
   if (!explosions.length || REDUCED_MOTION) return;
   lightContext.clearRect(0, 0, W, H);
   lightContext.globalCompositeOperation = "source-over";
@@ -1673,7 +1685,7 @@ function drawTank(pl, now) {
     barrelLength: P.CFG.barrelLen / CELL, team: TEAM[pl.slot], slot: pl.slot,
     alive: pl.alive, health: pl.hp, hit: now < FX.hitUntil[pl.slot],
     recoil: REDUCED_MOTION ? 0 : Math.max(0, (FX.recoilUntil[pl.slot] - now) / 180),
-    now, reducedMotion: REDUCED_MOTION,
+    now, wind: G.wind, reducedMotion: REDUCED_MOTION,
   });
   octx.save();
   if (active && pl.alive) {
@@ -1695,113 +1707,49 @@ function drawTank(pl, now) {
   }
   octx.globalAlpha = pl.alive ? 1 : .45;
   octx.fillStyle = "#101a16d9";
-  octx.beginPath(); octx.roundRect(horizontal - 9, vertical - 28, 18, 8, 2); octx.fill();
+  octx.beginPath(); octx.roundRect(horizontal - 9, vertical - 30, 18, 8, 2); octx.fill();
   octx.fillStyle = TEAM[pl.slot]; octx.font = "6px ui-monospace"; octx.textAlign = "center"; octx.textBaseline = "middle";
-  octx.fillText(`${MARK[pl.slot]} ${String(pl.slot + 1).padStart(2, "0")}`, horizontal, vertical - 24);
+  octx.fillText(`${MARK[pl.slot]} ${String(pl.slot + 1).padStart(2, "0")}`, horizontal, vertical - 26);
   if (pl.alive) {
-    octx.fillStyle = "#0b1816"; octx.fillRect(horizontal - 9, vertical - 19, 18, 1.6);
+    octx.fillStyle = "#0b1816"; octx.fillRect(horizontal - 9, vertical - 21, 18, 1.6);
     octx.fillStyle = pl.hp > 40 ? TEAM[pl.slot] : "#df957e";
-    octx.fillRect(horizontal - 9, vertical - 19, 18 * Math.max(0, pl.hp) / 100, 1.6);
+    octx.fillRect(horizontal - 9, vertical - 21, 18 * Math.max(0, pl.hp) / 100, 1.6);
   }
   octx.restore();
 }
 
-function drawFlight() {
+function drawFlight(now) {
   if (G.phase !== "RESOLVE") return;
-  for (const tr of G.flightTracks) {
-    const sample = sampleFlightTrack(tr, G.flightTick);
-    if (!sample) continue;
-    const { upto, blend } = sample;
-    const X = sx(sample.x), Y = sy(sample.y);
-    const from = Math.max(0, upto - 66), brightFrom = Math.max(from, upto - 16);
-    octx.strokeStyle = TEAM[tr.leg.slot]; octx.globalAlpha = .24; octx.lineWidth = 1;
-    octx.beginPath();
-    for (let k = from; k <= upto; k++) { const p = tr.leg.pts[k]; k === from ? octx.moveTo(sx(p.x), sy(p.y)) : octx.lineTo(sx(p.x), sy(p.y)); }
-    if (blend > 0) octx.lineTo(X, Y);
-    octx.stroke();
-    octx.globalAlpha = .82; octx.lineWidth = 1.5; octx.beginPath();
-    for (let k = brightFrom; k <= upto; k++) { const p = tr.leg.pts[k]; k === brightFrom ? octx.moveTo(sx(p.x), sy(p.y)) : octx.lineTo(sx(p.x), sy(p.y)); }
-    if (blend > 0) octx.lineTo(X, Y);
-    octx.stroke(); octx.globalAlpha = 1;
-    octx.shadowColor = "#FFF4E0"; octx.shadowBlur = 8; octx.fillStyle = "#FFF4E0";
-    octx.beginPath(); octx.arc(X, Y, tr.leg.kind === "split" ? 1.25 : 1.7, 0, Math.PI * 2); octx.fill(); octx.shadowBlur = 0;
+  for (const track of G.flightTracks) {
+    const pose = projectilePose(track, G.flightTick, CELL);
+    if (!pose) continue;
+    drawFlightTrail(octx, track, pose, CELL, { now, wind: G.wind, sprites: EFFECT_SPRITES, reducedMotion: REDUCED_MOTION });
+    drawProjectile(octx, { ...pose, now, reducedMotion: REDUCED_MOTION });
+    if (pose.kind === "split" && G.flightTick - track.start < 7 && !REDUCED_MOTION) {
+      const opening = (G.flightTick - track.start) / 7, origin = track.leg.pts[0];
+      octx.save(); octx.globalAlpha = (1 - opening) * .45; octx.strokeStyle = "#f3e4be"; octx.lineWidth = .6;
+      octx.beginPath(); octx.arc(sx(origin.x), sy(origin.y), 2 + opening * 10, 0, Math.PI * 2); octx.stroke(); octx.restore();
+    }
   }
 }
 
 function drawEffects(now) {
-  for (const e of FX.explosions) {
-    const age = (now - e.at) / 1000;
-    if (e.shield) {
-      const a = Math.max(0, 1 - age / .65); octx.globalAlpha = a; octx.strokeStyle = "#3DDCFF"; octx.lineWidth = 1.5;
-      octx.beginPath(); octx.arc(e.x, e.y, e.size * (.45 + age * 1.1), 0, Math.PI * 2); octx.stroke(); octx.globalAlpha = 1; continue;
-    }
-    if (e.nuclear && age < 1.08) {
-      const core = Math.max(0, 1 - age / 1.08), r = e.size * (.2 + age * .9);
-      const grad = octx.createRadialGradient(e.x, e.y, 0, e.x, e.y, Math.max(1, r));
-      grad.addColorStop(0, `rgba(255,255,235,${.98 * core})`);
-      grad.addColorStop(.28, `rgba(255,218,102,${.92 * core})`);
-      grad.addColorStop(.64, `rgba(255,112,48,${.68 * core})`);
-      grad.addColorStop(1, "rgba(120,44,30,0)");
-      octx.fillStyle = grad; octx.beginPath(); octx.arc(e.x, e.y, r, 0, Math.PI * 2); octx.fill();
-    }
-    if (e.nuclear && age > .32 && age < 3.45) {
-      const rise = age - .32, a = Math.max(0, 1 - rise / 3.13) * .44;
-      const capY = e.y - e.size * (.22 + rise * .34), capW = e.size * (.38 + rise * .16);
-      octx.globalAlpha = a; octx.fillStyle = "#33272A";
-      octx.fillRect(e.x - e.size * .095, capY, e.size * .19, Math.max(4, e.y - capY));
-      for (let lobe = -2; lobe <= 2; lobe++) {
-        const lx = e.x + lobe * capW * .23, ly = capY + Math.abs(lobe) * e.size * .035;
-        octx.beginPath(); octx.ellipse(lx, ly, capW * (.34 - Math.abs(lobe) * .025), e.size * (.16 + rise * .035), 0, 0, Math.PI * 2); octx.fill();
-      }
-      octx.globalAlpha = 1;
-    }
-    if (!e.deposit && age < .36) {
-      const core = Math.max(0, 1 - age / .36), r = e.size * (.22 + age * 1.65);
-      const grad = octx.createRadialGradient(e.x, e.y, 0, e.x, e.y, Math.max(1, r));
-      grad.addColorStop(0, `rgba(255,244,224,${.95 * core})`); grad.addColorStop(.34, `rgba(255,177,91,${.72 * core})`); grad.addColorStop(1, "rgba(166,71,46,0)");
-      octx.fillStyle = grad; octx.beginPath(); octx.arc(e.x, e.y, r, 0, Math.PI * 2); octx.fill();
-    }
-    if (!e.deposit && age < (e.nuclear ? 1.45 : .82)) {
-      const duration = e.nuclear ? 1.45 : .82, a = Math.max(0, 1 - age / duration);
-      const r = e.size * (.18 + age * (e.nuclear ? 2.25 : 1.92));
-      octx.globalAlpha = a * (e.nuclear ? .85 : .64); octx.strokeStyle = e.nuclear ? "#FFD36A" : "#FFF4E0";
-      octx.lineWidth = 1.1 + a * (e.nuclear ? 3.4 : 2.1); octx.beginPath(); octx.arc(e.x, e.y, r, 0, Math.PI * 2); octx.stroke();
-      if (age > .11) {
-        octx.globalAlpha = a * .34; octx.lineWidth = .8 + a * 1.2; octx.beginPath();
-        octx.arc(e.x, e.y, Math.max(1, r - e.size * .18), 0, Math.PI * 2); octx.stroke();
-      }
-      octx.globalAlpha = 1;
-    } else if (e.deposit && age < .58) {
-      const a = Math.max(0, 1 - age / .58); octx.globalAlpha = a * .42;
-      octx.strokeStyle = e.deposit ? "#C9A56B" : "#FFF4E0"; octx.lineWidth = 1.2 + a * 1.2;
-      octx.beginPath(); octx.arc(e.x, e.y, e.size * (.18 + age * 1.75), 0, Math.PI * 2); octx.stroke(); octx.globalAlpha = 1;
-    }
-    if (age > .1 && age < 2.2) {
-      const a = Math.max(0, 1 - (age - .1) / 2.1) * .18, r = e.size * (.5 + age * .42);
-      octx.globalAlpha = a; octx.fillStyle = e.deposit ? "#A6472E" : "#3A3031"; octx.beginPath(); octx.ellipse(e.x + G.wind * age * 2.2, e.y - age * 4, r, r * .55, 0, 0, Math.PI * 2); octx.fill(); octx.globalAlpha = 1;
-    }
+  for (const particle of FX.particles) {
+    if (particle.kind === "smoke" || particle.kind === "dust") drawCombatParticle(octx, particle, EFFECT_SPRITES, REDUCED_MOTION);
   }
-  for (const m of FX.muzzles) {
-    const age = (now - m.at) / 1000, a = Math.max(0, 1 - age / .22); if (a <= 0) continue;
-    octx.save(); octx.translate(m.x, m.y); octx.rotate(Math.atan2(m.dy, m.dx)); octx.globalAlpha = a;
-    octx.fillStyle = "#FFF4E0"; octx.beginPath(); octx.moveTo(0, -1.8); octx.lineTo(9 + age * 12, 0); octx.lineTo(0, 1.8); octx.closePath(); octx.fill();
-    octx.fillStyle = TEAM[m.slot]; octx.beginPath(); octx.moveTo(0, -.8); octx.lineTo(5, 0); octx.lineTo(0, .8); octx.fill(); octx.restore();
+  for (const effect of FX.explosions) {
+    drawImpact(octx, effect, now, { wind: G.wind, sprites: EFFECT_SPRITES, reducedMotion: REDUCED_MOTION });
   }
-  for (const p of FX.particles) {
-    const a = Math.max(0, Math.min(1, p.life / Math.min(p.max, .45)));
-    octx.globalAlpha = p.kind === "smoke" ? Math.min(.32, a * .3) : Math.min(.88, a);
-    octx.fillStyle = p.color;
-    if (p.kind === "spark") {
-      octx.strokeStyle = p.color; octx.lineWidth = Math.max(.6, p.size); octx.beginPath();
-      octx.moveTo(p.x, p.y); octx.lineTo(p.x - p.vx * .028, p.y - p.vy * .028); octx.stroke();
-    } else if (p.kind === "debris") { octx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size); }
-    else { octx.beginPath(); octx.arc(p.x, p.y, p.size, 0, Math.PI * 2); octx.fill(); }
+  for (const muzzle of FX.muzzles) drawMuzzleFlash(octx, muzzle, now, REDUCED_MOTION);
+  for (const particle of FX.particles) {
+    if (particle.kind !== "smoke" && particle.kind !== "dust") drawCombatParticle(octx, particle, EFFECT_SPRITES, REDUCED_MOTION);
   }
-  octx.globalAlpha = 1;
-  if (FX.flashAt >= 0) {
-    const age = now - FX.flashAt;
-    const duration = FX.flashDuration || 120;
-    if (age < duration) { octx.fillStyle = `rgba(255,244,224,${FX.flashPower * (1 - age / duration)})`; octx.fillRect(0, 0, W, H); }
+  if (!REDUCED_MOTION && FX.flashAt >= 0) {
+    const age = now - FX.flashAt, duration = FX.flashDuration || 120;
+    if (age >= 0 && age < duration) {
+      octx.fillStyle = `rgba(255,244,224,${Math.min(.3, FX.flashPower) * (1 - age / duration)})`;
+      octx.fillRect(0, 0, W, H);
+    }
   }
 }
 
@@ -1851,7 +1799,7 @@ function drawOverlay() {
   const activePlayer = G.players[G.cur];
   if (activePlayer) drawAimGauge(activePlayer);
   for (const pl of G.players) drawTank(pl, now);
-  drawFlight();
+  drawFlight(now);
 
   drawEffects(now);
   drawTrackingScope(now);
@@ -1881,11 +1829,13 @@ function drawTrackingScope(now) {
     scopeContext.drawImage(ovl, left * ENTITY_SCALE, top * ENTITY_SCALE, width * ENTITY_SCALE, height * ENTITY_SCALE,
       destinationX, destinationY, width * scale, height * scale);
   }
-  for (const projectile of camera.projectiles) {
-    if (projectile.x >= 0 && projectile.x < W && projectile.y >= 0 && projectile.y < H) continue;
-    scopeContext.save(); scopeContext.fillStyle = "#fff4e0"; scopeContext.shadowColor = "#fff4e0"; scopeContext.shadowBlur = 8;
-    scopeContext.beginPath(); scopeContext.arc((projectile.x - camera.left) * scale, (projectile.y - camera.top) * scale,
-      1.7 * scale, 0, Math.PI * 2); scopeContext.fill(); scopeContext.restore();
+  for (const track of camera.mode === "flight" ? G.flightTracks : []) {
+    const pose = projectilePose(track, G.flightTick, CELL);
+    if (!pose || (pose.horizontal >= 0 && pose.horizontal < W && pose.vertical >= 0 && pose.vertical < H)) continue;
+    scopeContext.save(); scopeContext.scale(scale, scale); scopeContext.translate(-camera.left, -camera.top);
+    drawFlightTrail(scopeContext, track, pose, CELL, { now, wind: G.wind, sprites: EFFECT_SPRITES, reducedMotion: REDUCED_MOTION });
+    drawProjectile(scopeContext, { ...pose, now, reducedMotion: REDUCED_MOTION });
+    scopeContext.restore();
   }
   const magnification = Number((210 / camera.width).toFixed(1));
   const modeLabel = camera.mode === "flight" ? "TRACK" : camera.mode === "aim" ? "OPTIC" : "IMPACT";
@@ -2089,6 +2039,8 @@ function selectWeapon(id) {
 /* ══════════════════ UI 동기화 ══════════════════ */
 function syncWindHud() {
   const indicator = $("windHud");
+  indicator.dataset.direction = G.wind < 0 ? "left" : G.wind > 0 ? "right" : "calm";
+  indicator.style.setProperty("--wind-period", `${Math.max(.55, 2.8 - Math.abs(G.wind) * .35)}s`);
   const player = G.players[G.cur];
   const gust = Math.abs(G.windDelta) >= 2;
   const ratio = Math.max(-1, Math.min(1, G.wind / Math.max(1, P.CFG.windMax)));
@@ -2156,22 +2108,17 @@ function syncWeapons() {
     const dis = locked || a <= 0;
     const ammoText = w.ammo0 === null ? "∞" : a;
     const classes = `${pl.weaponId === w.id ? "on " : ""}${w.id === Wp.NUCLEAR_WEAPON_ID ? "nuclear" : ""}`.trim();
-    const icons = [
-      "M12 3 8 9v14h8V9Zm-4 8h8M8 19h8M12 6v3",
-      "M12 2 6 9v14h12V9Zm-6 11h12M9 17h6M3 6 1 4m20 2 2-2",
-      "m12 2-3 5v9h6V7Zm-7 11-3 4v7h6v-7Zm14 0-3 4v7h6v-7M12 20v4",
-      "M8 3h8v12l-4 8-4-8Zm0 5 8 4m-8 0 8 4M4 24h16",
-      "M12 4a8 8 0 1 0 8 8M12 4v4m0 12v-4M4 12h4m8 0h4M18 2l4 4-4 4",
-      "m12 2-5 9 3 12h4l3-12Zm-5 9h10M12 6v11",
-      "m3 19 9-5 9 5-9 5Zm0-6 9-5 9 5M3 7l9-5 9 5",
-      "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 6v3m-5 5 3-3m7 3-3-3M9 7h6M5 14l3 5m11-5-3 5",
-    ];
-    h += `<button data-w="${w.id}" class="${classes}" aria-label="${w.name} ${ammoText}발 — ${w.desc}" title="${w.name} · ${w.desc}" ${dis ? "disabled" : ""}>`
+    const style = shellStyle(w.id);
+    h += `<button data-w="${w.id}" class="${classes}" style="--shell-accent:${style.band}" aria-pressed="${pl.weaponId === w.id}" aria-label="${w.name} ${ammoText}발 — ${w.desc}" title="${w.name} · ${w.desc}" ${dis ? "disabled" : ""}>`
       + `<span class="weapon-key">${w.id + 1}</span><i>${ammoText}</i>`
-      + `<svg class="weapon-icon" viewBox="0 0 24 26" aria-hidden="true"><path d="${icons[w.id]}" stroke-linecap="round" stroke-linejoin="round"/></svg>`
-      + `<span class="weapon-name">${w.name}</span></button>`;
+      + `<canvas class="shell-preview" width="120" height="80" aria-hidden="true"></canvas>`
+      + `<span class="weapon-name">${w.name}</span><small class="shell-code">${style.code}</small></button>`;
   }
   box.innerHTML = h;
+  box.querySelectorAll("[data-w] canvas").forEach((canvas) => {
+    drawProjectile(canvas.getContext("2d"), { horizontal: 60, vertical: 40, angle: -.65,
+      weaponId: +canvas.parentElement.dataset.w, scale: 5.2, icon: true, reducedMotion: true });
+  });
   box.querySelectorAll("[data-w]").forEach((b) => b.onclick = () => selectWeapon(+b.dataset.w));
   const weapon = M.effectiveWeapon(pl, pl.weaponId), ammo = M.ammoOf(pl, weapon.id);
   $("hWeapon").textContent = weapon.name;
