@@ -1,0 +1,45 @@
+#stage{border-color:#89907855;box-shadow:0 0 0 1px #090e0b,0 20px 65px #0008,inset 0 1px #f3e2b914}
+#stage::before{background:radial-gradient(ellipse at 55% 35%,transparent 48%,#12161133 78%,#080e0d99 100%)}
+#stage::after{opacity:.09}
+.battle-nav{background:linear-gradient(180deg,#202a25,#141d19);box-shadow:0 1px #bcb78b12,0 5px 22px #0003}
+#controls{background:linear-gradient(165deg,#293229,#18231e 65%);box-shadow:inset 0 1px #dbcb9b26,0 -8px 30px #0003}
+.aim input{background:linear-gradient(180deg,#0e1814,#1b261e);box-shadow:inset 0 2px 6px #0005;border-color:#65725988;color:#efe4bd}
+#bFire{position:relative;background:linear-gradient(135deg,#eddaa9,#c8ac6f);border:1px solid #e9d6a0;box-shadow:inset 0 1px #fff7d899,0 3px 0 #74613e,0 5px 18px #0004}
+#bFire:hover:not(:disabled){background:linear-gradient(135deg,#fff0c5,#dfc187);box-shadow:inset 0 1px #fff7d8,0 3px 0 #74613e,0 0 24px #c9a66326}
+#bFire:active:not(:disabled){transform:translateY(2px);box-shadow:inset 0 1px #fff7d855,0 1px 0 #74613e}
+#wsel{gap:6px}
+#wsel button{height:94px;position:relative;overflow:hidden;padding:5px 3px 6px;gap:0;background:linear-gradient(155deg,#33403888,#131e19 75%);border:1px solid #74826a44;box-shadow:inset 0 1px #e6d8ad0a;border-radius:3px}
+#wsel button::after{content:"";position:absolute;left:17%;right:17%;bottom:0;height:2px;background:var(--shell-accent);opacity:.25}
+#wsel button.on{background:radial-gradient(ellipse at 50% 24%,#c6b27a25,transparent 80%),linear-gradient(155deg,#3c4735,#1f2b21);border-color:#c5b77eaa;color:#f5e9c6;box-shadow:inset 0 0 16px #d4b77208,0 0 0 1px #0b110c,0 3px 10px #0003}
+#wsel button.on::after{opacity:1;box-shadow:0 -2px 12px var(--shell-accent)}
+#wsel button:hover:not(:disabled){border-color:var(--shell-accent);background-color:#465040}
+#wsel button:disabled{opacity:.42}
+#wsel .shell-preview{position:static;inset:auto;display:block;width:66px;height:44px;max-width:100%;object-fit:contain;margin:0 auto;filter:drop-shadow(0 3px 3px #0009)}
+#wsel .weapon-name{font-size:11px;line-height:17px;font-weight:600}
+#wsel .shell-code{font:7px var(--ui-mono);letter-spacing:.06em;color:#98a58f;line-height:12px;white-space:nowrap}
+#wsel .on .shell-code{color:#d9c89b}
+#wsel .weapon-key{color:#8d9a85}
+.hud-player{background:linear-gradient(150deg,#263129ed,#111b17ed);box-shadow:inset 0 1px #e8d6a412,0 3px 12px #0003}
+.hud-player .hp{box-shadow:0 1px #050d08,inset 0 1px #f4e6a922}
+#windHud{box-shadow:0 3px 18px #0003,inset 0 1px #e5d4ab18;background:linear-gradient(160deg,#263126ee,#111b17ee)}
+.wind-airflow{position:relative;height:13px;margin:0 0 5px;overflow:hidden;color:#c9b98d}
+.wind-airflow b,.wind-airflow em{position:absolute;top:1px;font:7px var(--ui-mono);font-style:normal;color:#949c85}
+.wind-airflow b{left:0}.wind-airflow em{right:0}
+.wind-airflow span{position:absolute;left:20%;top:5px;width:37%;height:1px;background:linear-gradient(90deg,transparent,#d9cca3);animation:wind-flow var(--wind-period,2s) linear infinite}
+.wind-airflow span::after{content:"";position:absolute;right:0;top:-2px;width:4px;height:4px;border-top:1px solid #d9cca3;border-right:1px solid #d9cca3;transform:rotate(45deg)}
+.wind-airflow span:nth-child(2){top:1px;width:22%;animation-delay:-.7s;opacity:.45}
+.wind-airflow span:nth-child(3){top:10px;width:28%;animation-delay:-1.3s;opacity:.65}
+[data-direction=left] .wind-airflow span{animation-direction:reverse;background:linear-gradient(90deg,#d9cca3,transparent)}
+[data-direction=left] .wind-airflow span::after{right:auto;left:0;transform:rotate(-135deg)}
+[data-direction=calm] .wind-airflow span{animation:none;opacity:.25}
+[data-direction=calm] .wind-airflow span::after{display:none}
+@keyframes wind-flow{from{transform:translateX(-25px);opacity:0}25%{opacity:.9}75%{opacity:.6}to{transform:translateX(55px);opacity:0}}
+.tank-scope{box-shadow:0 6px 26px #0007,inset 0 1px #f8e4b329}
+.tank-scope>button{background:linear-gradient(180deg,#344032,#202b22)}
+.tank-scope canvas{background:#242d26}
+#phaseHud{top:86px}.crowded-hud #phaseHud{top:138px}
+@media(min-width:761px) and (max-height:800px){#wsel button{height:76px;padding:3px}#wsel .shell-preview{width:54px;height:36px}#wsel .shell-code{font-size:6px;line-height:8px}#wsel .weapon-name{font-size:10px;line-height:13px}}
+@media(max-width:1050px){#wsel{gap:4px}#wsel .shell-code{font-size:6px;letter-spacing:0}}
+@media(max-width:760px){.wind-airflow{height:9px;margin-bottom:3px}.wind-airflow span:nth-child(3){top:8px}#phaseHud{top:67px}.crowded-hud #phaseHud{top:117px}#wsel button{height:80px}#wsel .shell-preview{width:44px;height:36px}#wsel .weapon-name{font-size:9px;line-height:15px}#wsel .shell-code{font-size:5px;line-height:9px}}
+@media(max-width:480px){#wsel{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}#wsel button{height:78px}#wsel .shell-preview{width:60px;height:38px}#wsel .weapon-name{font-size:11px;line-height:17px}#wsel .shell-code{font-size:6px;line-height:10px}}
+@media(prefers-reduced-motion:reduce){.wind-airflow span{animation:none;opacity:.5}#bFire:active:not(:disabled){transform:none}}

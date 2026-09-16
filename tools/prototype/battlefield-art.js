@@ -1,4 +1,5 @@
 export const ENTITY_SCALE = 2;
+export const TANK_VISUAL_SCALE = 1.12;
 
 export function artHash(seed, column, row, salt = 0) {
   let value = (seed ^ Math.imul(column + 1, 0x9E3779B1) ^ Math.imul(row + 7, 0x85EBCA77) ^ salt) | 0;
@@ -100,8 +101,8 @@ function polygon(context, points, fill, stroke, lineWidth = .3) {
 export function drawBackdrop(context, width, height, seed) {
   context.save();
   const sky = context.createLinearGradient(0, 0, 0, height * .57);
-  sky.addColorStop(0, "#35323e"); sky.addColorStop(.38, "#8c6a64");
-  sky.addColorStop(.75, "#c79b78"); sky.addColorStop(1, "#d7b28a");
+  sky.addColorStop(0, "#29313b"); sky.addColorStop(.38, "#8d706b");
+  sky.addColorStop(.75, "#caa581"); sky.addColorStop(1, "#ddbd95");
   context.fillStyle = sky; context.fillRect(0, 0, width, height);
   const sunX = width * (.64 + (artHash(seed, 0, 0) & 255) / 255 * .12), sunY = height * .155;
   const glow = context.createRadialGradient(sunX, sunY, 10, sunX, sunY, width * .29);
@@ -109,6 +110,17 @@ export function drawBackdrop(context, width, height, seed) {
   context.fillStyle = glow; context.fillRect(0, 0, width, height);
   context.fillStyle = "#f0d4a6";
   context.beginPath(); context.arc(sunX, sunY, height * .034, 0, Math.PI * 2); context.fill();
+  const corona = context.createRadialGradient(sunX, sunY, height * .026, sunX, sunY, height * .095);
+  corona.addColorStop(0, "#ffe9b266"); corona.addColorStop(.35, "#f8d5a321"); corona.addColorStop(1, "#efc39100");
+  context.fillStyle = corona; context.fillRect(sunX - height * .1, sunY - height * .1, height * .2, height * .2);
+  for (let cloud = 0; cloud < 14; cloud++) {
+    const value = artHash(seed, cloud, 2, 0xC10D);
+    const horizontal = (value & 65535) / 65535 * width, vertical = height * (.035 + ((value >>> 16) & 255) / 255 * .25);
+    context.save(); context.translate(horizontal, vertical); context.scale(70 + (value & 63), 3 + ((value >>> 8) & 7));
+    const vapor = context.createRadialGradient(0, -.2, 0, 0, 0, 1);
+    vapor.addColorStop(0, "#514f543d"); vapor.addColorStop(.45, "#80716c21"); vapor.addColorStop(1, "#9a807100");
+    context.fillStyle = vapor; context.fillRect(-1, -1, 2, 2); context.restore();
+  }
   for (let band = 0; band < 22; band++) {
     const value = artHash(seed, band, 0, 0xC10D);
     const vertical = height * (.04 + (value & 255) / 255 * .29);
@@ -161,15 +173,15 @@ export function drawBackdrop(context, width, height, seed) {
 
 export function drawArtillery(context, options) {
   const { horizontal, vertical, tilt, angle, width, height, barrelLength, team, slot, muzzle,
-    alive = true, health = 100, recoil = 0, hit = false, now = 0, reducedMotion = false } = options;
+    alive = true, health = 100, recoil = 0, hit = false, now = 0, wind = 0, reducedMotion = false } = options;
   const facing = Math.cos(angle) >= 0 ? 1 : -1;
   const halfWidth = width / 2;
   const pivotX = muzzle ? muzzle.x - Math.cos(angle) * barrelLength : horizontal + Math.sin(tilt) * height;
   const pivotY = muzzle ? muzzle.y + Math.sin(angle) * barrelLength : vertical - Math.cos(tilt) * height;
   context.save();
   context.fillStyle = "#080b0bb3";
-  context.beginPath(); context.ellipse(horizontal + 2, vertical + .4, width * .64, 1.5, 0, 0, Math.PI * 2); context.fill();
-  context.save(); context.translate(horizontal, vertical); context.rotate(tilt); context.scale(facing, 1);
+  context.beginPath(); context.ellipse(horizontal + 2, vertical + .4, width * .7, 1.7, 0, 0, Math.PI * 2); context.fill();
+  context.save(); context.translate(horizontal, vertical); context.rotate(tilt); context.scale(facing * TANK_VISUAL_SCALE, TANK_VISUAL_SCALE);
   const armor = context.createLinearGradient(0, -12, 0, -3);
   armor.addColorStop(0, hit ? "#f0dcc1" : alive ? "#c3b491" : "#615e50");
   armor.addColorStop(.35, alive ? "#89927a" : "#42483f"); armor.addColorStop(1, "#343e35");
@@ -214,8 +226,26 @@ export function drawArtillery(context, options) {
   context.fillStyle = "#182723"; context.fillRect(.6, -11.8, 1.3, .6);
   context.fillStyle = "#b3d3c0"; context.fillRect(.85, -11.7, .7, .28);
   context.strokeStyle = "#b5bba0"; context.lineWidth = .3;
-  context.beginPath(); context.moveTo(-3.6, -10.5); context.lineTo(-4.8, -17); context.stroke();
-  context.fillStyle = "#d7c58e"; context.fillRect(-5.1, -17.4, .6, .7);
+  const antennaBend = reducedMotion ? 0 : wind * .14 + Math.sin(now * .005 + slot) * Math.min(.4, Math.abs(wind) * .09);
+  context.beginPath(); context.moveTo(-3.6, -10.5); context.quadraticCurveTo(-4.4, -14, -4.8 + antennaBend, -17); context.stroke();
+  context.fillStyle = "#d7c58e"; context.fillRect(-5.1 + antennaBend, -17.4, .6, .7);
+  polygon(context, [[-halfWidth + .8, -7.2], [-halfWidth + 3.1, -7.2], [-halfWidth + 3.1, -6.1], [-halfWidth + .8, -6.1]], "#424e41", "#c5bc98", .25);
+  context.strokeStyle = "#ded1ac"; context.lineWidth = .25;
+  context.beginPath(); context.moveTo(-halfWidth + 1.5, -7.2); context.lineTo(-halfWidth + 1.5, -6.1);
+  context.moveTo(-halfWidth + 2.5, -7.2); context.lineTo(-halfWidth + 2.5, -6.1); context.stroke();
+  context.fillStyle = "#25362e"; context.fillRect(-1.1, -12.7, 1.5, .5);
+  context.fillStyle = "#bcd9cc"; context.fillRect(-.8, -12.65, .85, .18);
+  context.fillStyle = "#344438"; context.fillRect(halfWidth - 2.5, -6, 1.35, .7);
+  if (alive) {
+    context.fillStyle = "#f2ddb0"; context.fillRect(halfWidth - 1.65, -5.85, .7, .35);
+    context.fillStyle = "#eac892"; context.fillRect(-halfWidth + .5, -4.8, .45, .5);
+  }
+  context.fillStyle = "#e1d3ab"; context.font = "1.65px ui-monospace, monospace"; context.textAlign = "center";
+  context.fillText(String(slot + 1).padStart(2, "0"), halfWidth - 4, -4.45);
+  for (let scratch = 0; scratch < 4; scratch++) {
+    context.strokeStyle = scratch % 2 ? "#c6bc9266" : "#15271e99"; context.lineWidth = .2;
+    context.beginPath(); context.moveTo(-2 + scratch * 1.4, -6 + scratch % 2); context.lineTo(-1.4 + scratch * 1.4, -6.3 + scratch % 2); context.stroke();
+  }
   if (health < 60) {
     polygon(context, [[-.7, -10.6], [.4, -10], [-.6, -8.9], [.6, -8.2]], null, "#262c25", .65);
     context.fillStyle = "#242b23"; context.fillRect(halfWidth - 4, -5.4, 1.8, .8);
@@ -235,13 +265,13 @@ export function drawArtillery(context, options) {
   context.fillStyle = "#16271e"; context.fillRect(barrelLength - 1.2, -.9, .35, .6); context.fillRect(barrelLength - 1.2, .3, .35, .6);
   context.fillStyle = "#080f0c"; context.fillRect(barrelLength - .18, -1.2, .25, 2.4);
   context.restore();
-  if (!reducedMotion && health < 45) {
-    for (let plume = 0; plume < 4; plume++) {
+  if (!reducedMotion) {
+    for (let plume = 0; plume < (health < 45 ? 5 : 3); plume++) {
       const age = ((now * .00024 + plume * .25 + slot * .17) % 1 + 1) % 1;
-      context.globalAlpha = (1 - age) * (alive ? .23 : .36);
+      context.globalAlpha = (1 - age) * (alive ? health < 45 ? .23 : .07 : .36);
       context.fillStyle = alive ? "#4a4b40" : "#292e29";
-      context.beginPath(); context.ellipse(horizontal - facing * halfWidth * .7 + Math.sin(age * 4) * 2,
-        vertical - 7 - age * 17, 1 + age * 3, 1 + age * 4, age, 0, Math.PI * 2); context.fill();
+      context.beginPath(); context.ellipse(horizontal - facing * halfWidth * .8 + Math.sin(age * 4) * 2 + wind * age * 1.5,
+        vertical - 7 - age * (health < 45 ? 17 : 10), 1 + age * 3, 1 + age * 4, age, 0, Math.PI * 2); context.fill();
     }
   }
   context.restore();
