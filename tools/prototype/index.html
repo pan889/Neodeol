@@ -7,6 +7,7 @@
 <meta name="theme-color" content="#17201c">
 <meta name="description" content="무너지는 지형 위의 턴제 포병전. AI 작전에 도전하고, 한 발로 전장을 바꾸세요.">
 <link rel="stylesheet" href="./interface.css">
+<link rel="stylesheet" href="./battlefield.css">
 </head>
 <body>
 <section id="homeScreen" aria-label="작전실">
@@ -73,6 +74,10 @@
           <i></i><span id="chargePin"></span>
         </div>
       </div>
+      <section id="tankScope" class="tank-scope" aria-label="활성 탱크 확대 관측경">
+        <button id="bTankScope" aria-expanded="true" aria-controls="scopeBody"><span>관측경 <small>OPTIC ×4</small></span><span id="scopeToggle">−</span></button>
+        <div id="scopeBody"><canvas id="scopeCanvas" width="420" height="228" aria-label="실제 전장 속 활성 탱크를 4배 확대"></canvas><div class="scope-caption"><span id="scopeUnit">UNIT 01</span><span id="scopeCondition">장갑 정상</span></div></div>
+      </section>
     </div>
   </div></div>
   <section id="battleGuide" class="battle-guide" aria-label="사격 안내" hidden><button id="bDismissGuide" class="guide-dismiss" aria-label="안내 닫기">×</button><span class="eyebrow">FIELD MANUAL / 사격 입문</span><strong id="guideTitle"></strong><p id="guideBody"></p><div class="guide-controls"><span id="guidePage"></span><button id="bNextGuide">다음 →</button></div></section>
@@ -126,6 +131,7 @@ import * as CanonPhys from "../multiplayer/sim/ballistics.js";
 import * as CanonMapgen from "../multiplayer/sim/mapgen.js";
 import { aiIntent, aiShop } from "./ai.js";
 import { OPERATIONS, loadProfile, normalizeProfile, recordResult, saveProfile } from "./operations.js";
+import { ENTITY_SCALE, buildGeology, terrainRelief, drawBackdrop, drawArtillery } from "./battlefield-art.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
 import * as CanonTrig from "../multiplayer/sim/trig.js";
@@ -1293,6 +1299,33 @@ function showSetup() {
 /* ══════════════════ 렌더 ══════════════════ */
 const ter = $("ter"), tctx = ter.getContext("2d", { alpha: false });
 const ovl = $("ovl"), octx = ovl.getContext("2d");
+const scopeCanvas = $("scopeCanvas"), scopeContext = scopeCanvas.getContext("2d");
+let scopeOpen = innerWidth > 760;
+$("scopeBody").hidden = !scopeOpen;
+$("bTankScope").setAttribute("aria-expanded", String(scopeOpen));
+$("scopeToggle").textContent = scopeOpen ? "−" : "+";
+$("bTankScope").onclick = () => {
+  scopeOpen = !scopeOpen;
+  $("scopeBody").hidden = !scopeOpen;
+  $("bTankScope").setAttribute("aria-expanded", String(scopeOpen));
+  $("scopeToggle").textContent = scopeOpen ? "−" : "+";
+};
+for (const event of ["pointerdown", "pointermove", "pointerup", "click", "wheel"]) {
+  $("tankScope").addEventListener(event, (input) => input.stopPropagation());
+}
+ovl.width = W * ENTITY_SCALE;
+ovl.height = H * ENTITY_SCALE;
+octx.scale(ENTITY_SCALE, ENTITY_SCALE);
+const backdropCanvas = document.createElement("canvas");
+backdropCanvas.width = W; backdropCanvas.height = H;
+const backdropContext = backdropCanvas.getContext("2d", { willReadFrequently: true });
+const terrainMask = document.createElement("canvas");
+terrainMask.width = W; terrainMask.height = H;
+const maskContext = terrainMask.getContext("2d");
+const maskImage = maskContext.createImageData(W, H), maskPixels = new Uint32Array(maskImage.data.buffer);
+const impactLight = document.createElement("canvas");
+impactLight.width = W; impactLight.height = H;
+const lightContext = impactLight.getContext("2d");
 const GRID_N = W * H;
 const img = tctx.createImageData(W, H), px = new Uint32Array(img.data.buffer);
 const hexToRgb = (s) => [parseInt(s.slice(1, 3), 16), parseInt(s.slice(3, 5), 16), parseInt(s.slice(5, 7), 16)];
@@ -1303,6 +1336,7 @@ const MAT_RGB = MAT_HEX.map((s) => s ? hexToRgb(s) : [0, 0, 0]);
 const CRUST_RGB = hexToRgb("#4A4038");
 const scenePx = new Uint32Array(GRID_N), grain = new Uint8Array(GRID_N);
 const faceDepth = new Uint8Array(GRID_N), faceAge = new Uint8Array(GRID_N);
+let geology = { textures: Array.from({ length: 6 }, () => new Int8Array(GRID_N)) }, artSeed = null;
 let renderAll = true;
 const dirtyRow = new Uint8Array(H);
 let dirtyAny = false;
@@ -1313,48 +1347,14 @@ function visualHash(seed, x, y, salt = 0) {
   return h >>> 0;
 }
 
-function ridge(seed, base, amp, step, salt) {
-  const controls = new Float32Array(Math.ceil(W / step) + 2), out = new Float32Array(W);
-  for (let i = 0; i < controls.length; i++) controls[i] = base + ((visualHash(seed, i, salt, salt) & 1023) / 1023 - .5) * amp;
-  for (let x = 0; x < W; x++) {
-    const c = Math.floor(x / step), u0 = (x - c * step) / step, u = u0 * u0 * (3 - 2 * u0);
-    out[x] = controls[c] + (controls[c + 1] - controls[c]) * u;
-  }
-  return out;
-}
-
 function buildBackdrop(seed) {
-  const zenith = hexToRgb("#343B40"), mid = hexToRgb("#B18B72"), horizon = hexToRgb("#D9B887");
-  const far = ridge(seed, 140, 76, 75, 0x1111), middle = ridge(seed, 184, 80, 55, 0x2222), near = ridge(seed, 243, 75, 39, 0x3333);
-  const sunX = W * (.48 + (visualHash(seed, 1, 2, 0x5151) & 255) / 255 * .24), sunY = H * .23, sunR2 = 180 * 180;
-  for (let y = 0; y < H; y++) {
-    const t = Math.min(1, y / (H * .5)); let rr, gg, bb;
-    if (t < .62) {
-      const u = t / .62; rr = zenith[0] + (mid[0] - zenith[0]) * u; gg = zenith[1] + (mid[1] - zenith[1]) * u; bb = zenith[2] + (mid[2] - zenith[2]) * u;
-    } else {
-      const u = (t - .62) / .38; rr = mid[0] + (horizon[0] - mid[0]) * u; gg = mid[1] + (horizon[1] - mid[1]) * u; bb = mid[2] + (horizon[2] - mid[2]) * u;
-    }
-    for (let x = 0; x < W; x++) {
-      const i = y * W + x, h = visualHash(seed, x, y, 0xA77A), n = (h & 15) - 7;
-      grain[i] = h & 15;
-      let r = rr * .94, g = gg * .94, b = bb * .94;
-      const dx = x - sunX, dy = y - sunY, d2 = dx * dx + dy * dy;
-      if (d2 < sunR2) {
-        const glow = (1 - d2 / sunR2) * .38;
-        r += 112 * glow; g += 72 * glow; b += 28 * glow;
-      }
-      if (d2 < 27 * 27) { r = 235; g = 213; b = 172; }
-      if (y > 75 && y < 310) {
-        const band = ((visualHash(seed, x >> 4, y >> 3, 0xC10D) & 255) / 255 - .5) * 5;
-        r += band; g += band * .72; b += band * .58;
-      }
-      if (y >= far[x]) { r = 125; g = 111; b = 94; }
-      if (y >= middle[x]) { r = 88; g = 85; b = 72; }
-      if (y >= near[x]) { r = 58; g = 65; b = 55; }
-      if (y >= middle[x] && y < middle[x] + 3) { r += 13; g += 10; b += 5; }
-      scenePx[i] = abgr(r + n * .24, g + n * .18, b + n * .22);
-    }
+  if (artSeed !== seed) {
+    geology = buildGeology(seed, W, H);
+    grain.set(geology.grain);
+    artSeed = seed;
   }
+  drawBackdrop(backdropContext, W, H, seed);
+  scenePx.set(new Uint32Array(backdropContext.getImageData(0, 0, W, H).data.buffer));
 }
 
 function faceDepthAt(x, y, i) {
@@ -1405,7 +1405,7 @@ function weatherTerrainFaces() {
 function markMovedRows() {
   const n = T.getMovedCount(), rows = T.moved.row, drows = T.moved.drow;
   for (let i = 0; i < n; i++) {
-    let lo = Math.max(0, Math.min(rows[i], drows[i]) - 4), hi = Math.min(H - 1, Math.max(rows[i], drows[i]) + 4);
+    let lo = Math.max(0, Math.min(rows[i], drows[i]) - 12), hi = Math.min(H - 1, Math.max(rows[i], drows[i]) + 12);
     for (let y = lo; y <= hi; y++) dirtyRow[y] = 1;
     dirtyAny = true;
   }
@@ -1415,13 +1415,14 @@ function paintRow(y) {
   const base = y * W;
   for (let x = 0; x < W; x++) {
     const i = base + x, m = grid[i];
+    maskPixels[i] = m === EMPTY ? 0 : 0xFFFFFFFF;
     if (m === EMPTY) { px[i] = scenePx[i]; faceDepth[i] = 0; faceAge[i] = 255; continue; }
     const prev = faceDepth[i], depth = faceDepthAt(x, y, i);
     faceDepth[i] = depth;
     if (depth > 0 && prev === 0) faceAge[i] = 0;
     else if (depth === 0) faceAge[i] = 255;
-    const stratum = ((y + (x >> 5) * 3 + (grain[i] >> 2)) % 19 < 2) ? -8 : 0;
-    const fresh = MAT_RGB[m], noise = (grain[i] - 7.5) * .85 + stratum;
+    const fresh = MAT_RGB[m], noise = geology.textures[m][i];
+    const relief = terrainRelief(grid, W, H, x, y);
     let r, g, b;
     if (depth > 0) {
       const weather = Math.min(.84, faceAge[i] / 38 * .84), thickness = 1 - (depth - 1) * .13;
@@ -1430,14 +1431,14 @@ function paintRow(y) {
       else if (x > 0 && grid[i - 1] === EMPTY) light = 1.04;
       else if (x + 1 < W && grid[i + 1] === EMPTY) light = .88;
       else if (y + 1 < H && grid[i + W] === EMPTY) light = .72;
-      r = (fresh[0] * (1 - weather) + CRUST_RGB[0] * weather) * light * thickness + noise;
-      g = (fresh[1] * (1 - weather) + CRUST_RGB[1] * weather) * light * thickness + noise * .7;
-      b = (fresh[2] * (1 - weather) + CRUST_RGB[2] * weather) * light * thickness + noise * .55;
+      r = (fresh[0] * (1 - weather) + CRUST_RGB[0] * weather) * light * thickness + noise * .45 + relief;
+      g = (fresh[1] * (1 - weather) + CRUST_RGB[1] * weather) * light * thickness + noise * .35 + relief * .87;
+      b = (fresh[2] * (1 - weather) + CRUST_RGB[2] * weather) * light * thickness + noise * .25 + relief * .63;
     } else {
-      const depthShade = 1 - Math.min(.25, y / H * .25);
-      r = (fresh[0] * .53 + CRUST_RGB[0] * .22 + noise) * depthShade;
-      g = (fresh[1] * .53 + CRUST_RGB[1] * .22 + noise * .7) * depthShade;
-      b = (fresh[2] * .53 + CRUST_RGB[2] * .22 + noise * .55) * depthShade;
+      const depthShade = 1 - Math.min(.30, y / H * .30);
+      r = (fresh[0] * .62 + CRUST_RGB[0] * .16 + noise + relief) * depthShade;
+      g = (fresh[1] * .62 + CRUST_RGB[1] * .16 + noise * .86 + relief * .87) * depthShade;
+      b = (fresh[2] * .62 + CRUST_RGB[2] * .16 + noise * .73 + relief * .63) * depthShade;
     }
     px[i] = abgr(r, g, b);
   }
@@ -1446,10 +1447,14 @@ function renderTerrain() {
   if (renderAll) {
     for (let y = 0; y < H; y++) paintRow(y);
     tctx.putImageData(img, 0, 0); renderAll = false; dirtyRow.fill(0); dirtyAny = false;
+    maskContext.putImageData(maskImage, 0, 0);
   } else if (dirtyAny) {
     let lo = H, hi = -1;
     for (let y = 0; y < H; y++) if (dirtyRow[y]) { paintRow(y); if (y < lo) lo = y; if (y > hi) hi = y; }
-    if (hi >= lo) tctx.putImageData(img, 0, 0, 0, lo, W, hi - lo + 1);
+    if (hi >= lo) {
+      tctx.putImageData(img, 0, 0, 0, lo, W, hi - lo + 1);
+      maskContext.putImageData(maskImage, 0, 0, 0, lo, W, hi - lo + 1);
+    }
     dirtyRow.fill(0); dirtyAny = false;
   }
 }
@@ -1595,11 +1600,35 @@ function drawAtmosphere(now) {
   const dir = G.wind === 0 ? .25 : Math.sign(G.wind), stretch = 1.5 + Math.abs(G.wind) * 1.7;
   octx.lineCap = "round";
   for (const d of FX.dust) {
+    const column = Math.floor(d.x), row = Math.floor(d.y);
+    if (column >= 0 && column < W && row >= 0 && row < H && grid[row * W + column] !== EMPTY) continue;
     const twinkle = .5 + Math.sin((now + d.phase) * .0013) * .25;
     octx.globalAlpha = .06 + twinkle * .08; octx.strokeStyle = "#E5B97B"; octx.lineWidth = d.size;
     octx.beginPath(); octx.moveTo(d.x, d.y); octx.lineTo(d.x - dir * stretch * d.speed, d.y + .2); octx.stroke();
   }
   octx.globalAlpha = 1; octx.lineCap = "butt";
+}
+
+function drawTerrainLight(now) {
+  const explosions = FX.explosions.filter((explosion) => !explosion.deposit && !explosion.shield
+    && now - explosion.at < 650);
+  if (!explosions.length || REDUCED_MOTION) return;
+  lightContext.clearRect(0, 0, W, H);
+  lightContext.globalCompositeOperation = "source-over";
+  for (const explosion of explosions) {
+    const fade = Math.max(0, 1 - (now - explosion.at) / 650);
+    const radius = explosion.size * 2.8;
+    const glow = lightContext.createRadialGradient(explosion.x, explosion.y, 0, explosion.x, explosion.y, radius);
+    glow.addColorStop(0, `rgba(255,202,121,${fade * .7})`);
+    glow.addColorStop(.3, `rgba(246,146,66,${fade * .45})`);
+    glow.addColorStop(1, "rgba(221,118,52,0)");
+    lightContext.fillStyle = glow;
+    lightContext.fillRect(explosion.x - radius, explosion.y - radius, radius * 2, radius * 2);
+  }
+  lightContext.globalCompositeOperation = "destination-in";
+  lightContext.drawImage(terrainMask, 0, 0);
+  lightContext.globalCompositeOperation = "source-over";
+  octx.save(); octx.globalCompositeOperation = "screen"; octx.drawImage(impactLight, 0, 0); octx.restore();
 }
 
 function drawAimGauge(pl) {
@@ -1650,98 +1679,46 @@ function updateTankTilt(pl) {
 }
 
 function drawTank(pl, now) {
-  let X = sx(pl.x), Y = sy(pl.y);
-  const w = P.TANK_W / CELL, h = P.TANK_H / CELL, visualW = w * 1.42;
-  const effectiveAngle10 = P.effectiveAngle10(pl, pl.angle10);
-  const rad = effectiveAngle10 / 10 * Math.PI / 180, facing = Math.cos(rad) >= 0 ? 1 : -1;
+  const horizontal = sx(pl.x), vertical = sy(pl.y);
+  const height = P.TANK_H / CELL, visualWidth = P.TANK_W / CELL * 1.42;
+  const pose = P.shotPose(pl, pl.angle10);
+  const angle = pose.angle10 / 10 * Math.PI / 180;
   const tilt = updateTankTilt(pl);
-  if (now < FX.recoilUntil[pl.slot]) {
-    const kick = (FX.recoilUntil[pl.slot] - now) / 180 * 1.45;
-    X -= Math.cos(rad) * kick; Y += Math.sin(rad) * kick;
+  const active = pl.slot === G.cur && G.phase !== "ROUND";
+  drawArtillery(octx, {
+    horizontal, vertical, tilt, angle, width: visualWidth, height, muzzle: { x: sx(pose.x), y: sy(pose.y) },
+    barrelLength: P.CFG.barrelLen / CELL, team: TEAM[pl.slot], slot: pl.slot,
+    alive: pl.alive, health: pl.hp, hit: now < FX.hitUntil[pl.slot],
+    recoil: REDUCED_MOTION ? 0 : Math.max(0, (FX.recoilUntil[pl.slot] - now) / 180),
+    now, reducedMotion: REDUCED_MOTION,
+  });
+  octx.save();
+  if (active && pl.alive) {
+    octx.strokeStyle = TEAM[pl.slot]; octx.lineWidth = .65;
+    octx.beginPath();
+    octx.moveTo(horizontal - 13, vertical - 4); octx.lineTo(horizontal - 13, vertical + 3); octx.lineTo(horizontal - 7, vertical + 3);
+    octx.moveTo(horizontal + 13, vertical - 4); octx.lineTo(horizontal + 13, vertical + 3); octx.lineTo(horizontal + 7, vertical + 3);
+    octx.stroke();
   }
-  const active = pl.slot === G.cur && G.phase !== "ROUND", hit = now < FX.hitUntil[pl.slot];
-  const armor = hit ? "#FFF4E0" : "#1B181E", armorTop = hit ? "#FFF4E0" : "#2B2630";
-  octx.save(); octx.globalAlpha = pl.alive ? 1 : .25;
-
-  octx.fillStyle = "rgba(5,5,7,.62)"; octx.beginPath();
-  octx.ellipse(X, Y + .55, visualW * .58, 1.7, 0, 0, Math.PI * 2); octx.fill();
-
-  octx.save(); octx.translate(X, Y); octx.rotate(tilt); octx.translate(-X, -Y);
-
-  octx.fillStyle = "#09090C"; octx.beginPath();
-  octx.roundRect(X - visualW / 2, Y - 4.3, visualW, 4.5, 2); octx.fill();
-  octx.strokeStyle = active ? TEAM[pl.slot] : "#4B444E"; octx.lineWidth = active ? 1 : .7; octx.stroke();
-  octx.fillStyle = "#17151A"; octx.beginPath();
-  octx.roundRect(X - visualW * .43, Y - 3.55, visualW * .86, 3, 1.3); octx.fill();
-  for (let i = -2; i <= 2; i++) {
-    octx.fillStyle = i === 0 ? "#403642" : "#29252C";
-    octx.beginPath(); octx.arc(X + i * visualW * .17, Y - 2.05, 1.05, 0, Math.PI * 2); octx.fill();
-    octx.strokeStyle = i === 0 ? TEAM[pl.slot] : "#5A505A"; octx.lineWidth = .45; octx.stroke();
-  }
-  octx.strokeStyle = "rgba(232,223,210,.13)"; octx.lineWidth = .45;
-  for (let tread = -3; tread <= 3; tread++) {
-    const tx = X + tread * visualW * .12;
-    octx.beginPath(); octx.moveTo(tx, Y - 4); octx.lineTo(tx + .6, Y - .3); octx.stroke();
-  }
-
-  octx.fillStyle = armor; octx.beginPath();
-  octx.moveTo(X - visualW * .43, Y - 4.3); octx.lineTo(X - visualW * .31, Y - 7.1);
-  octx.lineTo(X + visualW * .34, Y - 7.1); octx.lineTo(X + visualW * .46, Y - 4.3); octx.closePath(); octx.fill();
-  octx.strokeStyle = "#514955"; octx.lineWidth = .65; octx.stroke();
-  octx.strokeStyle = TEAM[pl.slot]; octx.lineWidth = 1.2; octx.beginPath();
-  octx.moveTo(X - visualW * .28, Y - 5); octx.lineTo(X + visualW * .3, Y - 5); octx.stroke();
-
-  octx.save(); octx.translate(X, 0); octx.scale(facing, 1);
-  octx.fillStyle = armorTop; octx.beginPath();
-  octx.moveTo(-5.1, Y - 7.1); octx.lineTo(-3.7, Y - 11.1); octx.lineTo(2.8, Y - 10.5);
-  octx.lineTo(4.6, Y - 8.4); octx.lineTo(3.7, Y - 7.1); octx.closePath(); octx.fill();
-  octx.strokeStyle = "#5C525D"; octx.lineWidth = .65; octx.stroke();
-  octx.fillStyle = "#0B0A0D"; octx.fillRect(-3.2, Y - 11.6, 3.2, .8);
-  octx.fillStyle = TEAM[pl.slot]; octx.fillRect(-2.8, Y - 10.5, .8, 2.4);
-  octx.strokeStyle = "#837681"; octx.lineWidth = .45; octx.beginPath();
-  octx.moveTo(-3.3, Y - 11.5); octx.lineTo(-4.1, Y - 16.5); octx.stroke();
-  octx.fillStyle = "#0A090C"; octx.beginPath(); octx.arc(-1.55, Y - 11.8, 1.45, Math.PI, 0); octx.fill();
-  octx.restore();
-  octx.restore();
-
-  const dirX = Math.cos(rad), dirY = -Math.sin(rad), perpX = -dirY, perpY = dirX;
-  const anchorX = X + Math.sin(tilt) * h, anchorY = Y - Math.cos(tilt) * h;
-  const barrelLen = P.CFG.barrelLen / CELL;
-  const mx = anchorX + dirX * barrelLen, my = anchorY + dirY * barrelLen;
-  octx.fillStyle = "#100E12"; octx.beginPath(); octx.arc(anchorX, anchorY, 2.75, 0, Math.PI * 2); octx.fill();
-  octx.strokeStyle = "#5D535E"; octx.lineWidth = .65; octx.stroke();
-  octx.strokeStyle = "#09080B"; octx.lineWidth = 4.5; octx.lineCap = "round";
-  octx.beginPath(); octx.moveTo(anchorX, anchorY); octx.lineTo(mx, my); octx.stroke();
-  octx.strokeStyle = active ? "#E8DFD2" : "#77707A"; octx.lineWidth = 2.15;
-  octx.beginPath(); octx.moveTo(anchorX, anchorY); octx.lineTo(mx, my); octx.stroke();
-  octx.strokeStyle = TEAM[pl.slot]; octx.lineWidth = .8;
-  octx.beginPath(); octx.moveTo(anchorX + perpX * .55, anchorY + perpY * .55);
-  octx.lineTo(mx + perpX * .55, my + perpY * .55); octx.stroke();
-  octx.lineCap = "butt";
-  octx.strokeStyle = "#08070A"; octx.lineWidth = 3.8; octx.beginPath();
-  octx.moveTo(mx - perpX * 2.3 - dirX * .3, my - perpY * 2.3 - dirY * .3);
-  octx.lineTo(mx + perpX * 2.3 - dirX * .3, my + perpY * 2.3 - dirY * .3); octx.stroke();
-  octx.strokeStyle = active ? TEAM[pl.slot] : "#817781"; octx.lineWidth = 1.4; octx.beginPath();
-  octx.moveTo(mx - perpX * 2, my - perpY * 2); octx.lineTo(mx + perpX * 2, my + perpY * 2); octx.stroke();
-
   if (pl.buried) {
-    octx.strokeStyle = "#FF3D9E"; octx.lineWidth = .7;
-    for (let i = -3; i <= 2; i++) {
-      octx.beginPath(); octx.moveTo(X - visualW / 2 + i * 2.6, Y - h - 2);
-      octx.lineTo(X - visualW / 2 + i * 2.6 + 8, Y + 1); octx.stroke();
-    }
+    octx.strokeStyle = "#df957e"; octx.lineWidth = .7;
+    octx.strokeRect(horizontal - visualWidth / 2 - 1, vertical - 11, visualWidth + 2, 12);
   }
   if (pl.shieldUp) {
-    octx.shadowColor = "#3DDCFF"; octx.shadowBlur = 7; octx.strokeStyle = "#73E8FF"; octx.lineWidth = 1;
-    octx.beginPath(); octx.arc(X, Y - h * .55, visualW * .65, Math.PI * 1.05, Math.PI * 1.95); octx.stroke(); octx.shadowBlur = 0;
+    const shield = octx.createRadialGradient(horizontal, vertical - height, 3, horizontal, vertical - height, 15);
+    shield.addColorStop(0, "#3ddcff00"); shield.addColorStop(.85, "#3ddcff08"); shield.addColorStop(1, "#3ddcff44");
+    octx.fillStyle = shield; octx.beginPath(); octx.arc(horizontal, vertical - 5, 15, Math.PI, 0); octx.fill();
+    octx.strokeStyle = "#8dcfc4"; octx.lineWidth = .7; octx.stroke();
   }
-  octx.fillStyle = "rgba(8,7,10,.88)"; octx.beginPath(); octx.roundRect(X - 6, Y - h - 13, 12, 8, 2); octx.fill();
-  octx.fillStyle = TEAM[pl.slot]; octx.font = "7px ui-monospace"; octx.textAlign = "center"; octx.textBaseline = "middle";
-  octx.fillText(MARK[pl.slot], X, Y - h - 9);
+  octx.globalAlpha = pl.alive ? 1 : .45;
+  octx.fillStyle = "#101a16d9";
+  octx.beginPath(); octx.roundRect(horizontal - 9, vertical - 28, 18, 8, 2); octx.fill();
+  octx.fillStyle = TEAM[pl.slot]; octx.font = "6px ui-monospace"; octx.textAlign = "center"; octx.textBaseline = "middle";
+  octx.fillText(`${MARK[pl.slot]} ${String(pl.slot + 1).padStart(2, "0")}`, horizontal, vertical - 24);
   if (pl.alive) {
-    octx.fillStyle = "rgba(8,7,10,.72)"; octx.fillRect(X - visualW * .42, Y - h - 3.4, visualW * .84, 1.7);
-    octx.fillStyle = pl.hp > 40 ? TEAM[pl.slot] : "#FF3D9E";
-    octx.fillRect(X - visualW * .42, Y - h - 3.4, visualW * .84 * pl.hp / 100, 1.7);
+    octx.fillStyle = "#0b1816"; octx.fillRect(horizontal - 9, vertical - 19, 18, 1.6);
+    octx.fillStyle = pl.hp > 40 ? TEAM[pl.slot] : "#df957e";
+    octx.fillRect(horizontal - 9, vertical - 19, 18 * Math.max(0, pl.hp) / 100, 1.6);
   }
   octx.restore();
 }
@@ -1851,6 +1828,7 @@ function drawEffects(now) {
 function drawOverlay() {
   const now = FX.lastNow;
   octx.clearRect(0, 0, W, H);
+  drawTerrainLight(now);
   drawAtmosphere(now);
 
   if (G.showTrail) {
@@ -1907,6 +1885,7 @@ function drawOverlay() {
   octx.fillText(`WIND ${G.wind >= 0 ? "+" : ""}${G.wind}${gust ? ` · GUST ${G.windDelta >= 0 ? "+" : ""}${G.windDelta}` : ""}${forecast}`, cxg, wy + 12);
 
   drawEffects(now);
+  drawTankScope();
 
   if (mouse.in && G.phase === "AIM") {
     octx.strokeStyle = "rgba(232,223,210,.42)"; octx.lineWidth = .7;
@@ -1914,6 +1893,21 @@ function drawOverlay() {
     octx.beginPath(); octx.moveTo(mouse.x - 7, mouse.y); octx.lineTo(mouse.x - 3, mouse.y); octx.moveTo(mouse.x + 3, mouse.y); octx.lineTo(mouse.x + 7, mouse.y);
     octx.moveTo(mouse.x, mouse.y - 7); octx.lineTo(mouse.x, mouse.y - 3); octx.moveTo(mouse.x, mouse.y + 3); octx.lineTo(mouse.x, mouse.y + 7); octx.stroke();
   }
+}
+
+function drawTankScope() {
+  const player = G.players[G.cur];
+  if (!scopeOpen || !player) return;
+  const sourceWidth = 52.5, sourceHeight = 28.5;
+  const left = Math.max(0, Math.min(W - sourceWidth, sx(player.x) - sourceWidth / 2));
+  const top = Math.max(0, Math.min(H - sourceHeight, sy(player.y) - 22));
+  scopeContext.clearRect(0, 0, scopeCanvas.width, scopeCanvas.height);
+  scopeContext.drawImage(ter, left, top, sourceWidth, sourceHeight, 0, 0, scopeCanvas.width, scopeCanvas.height);
+  scopeContext.drawImage(ovl, left * ENTITY_SCALE, top * ENTITY_SCALE, sourceWidth * ENTITY_SCALE, sourceHeight * ENTITY_SCALE,
+    0, 0, scopeCanvas.width, scopeCanvas.height);
+  $("scopeUnit").textContent = `UNIT ${String(player.slot + 1).padStart(2, "0")} · ${Math.max(0, player.hp)} HP`;
+  $("scopeUnit").style.color = TEAM[player.slot];
+  $("scopeCondition").textContent = !player.alive ? "차체 파괴" : player.buried ? "매몰 상태" : player.hp < 45 ? "장갑 손상" : "장갑 정상";
 }
 
 /* ══════════════════ 입력 ══════════════════ */

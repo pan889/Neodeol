@@ -12,6 +12,7 @@
 디버그 도구는 `/tools/prototype/?dev=1`에서 열 수 있다.
 싱글 기록·3개 작전의 5라운드 완주 검증:
 `node --test client/tests/operations.mjs client/tests/operations-integration.mjs`.
+전장 아트·비파괴 렌더 경계 검증: `node --test client/tests/battlefield-art.mjs`.
 
 **Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스까지 구현했다.**
 현재는 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화 단계다.

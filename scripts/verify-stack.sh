@@ -63,10 +63,10 @@ say "== 3. 개발 도구 =="
 probe /sandbox/ 200 '모래 자동자 샌드박스'
 probe /tools/prototype/ 200 'Neodeol'
 probe /tools/multiplayer/ 200 'MULTIPLAYER NETWORK HARNESS'
-if node --test client/tests/operations.mjs client/tests/operations-integration.mjs; then
-  ok "싱글플레이 작전·로컬 전적"
+if node --test client/tests/operations.mjs client/tests/operations-integration.mjs client/tests/battlefield-art.mjs; then
+  ok "싱글플레이 작전·로컬 전적·전장 아트"
 else
-  bad "싱글플레이 작전·로컬 전적 실패"
+  bad "싱글플레이 작전·로컬 전적·전장 아트 실패"
 fi
 if node --check tools/multiplayer/multiplayer.js >/dev/null \
   && node --check tools/multiplayer/room-client.js >/dev/null \

@@ -105,7 +105,7 @@ async def test_singleplayer_interface_assets(client: httpx.AsyncClient) -> None:
         page = await connection.get("/tools/prototype/")
         if page.status_code == 404:
             pytest.skip("NEODEOL_STATIC_DIR does not point at tools")
-        for asset in ("interface.css", "base.css", "operations.js", "canyon.svg"):
+        for asset in ("interface.css", "base.css", "operations.js", "canyon.svg", "battlefield-art.js", "battlefield.css"):
             response = await connection.get(f"/tools/prototype/{asset}")
             assert response.status_code == 200
             assert len(response.content) > 100
