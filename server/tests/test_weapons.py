@@ -1,7 +1,7 @@
 """무기 경제와 후반 병기 규칙."""
 
-from talus.sim import match as Match
-from talus.sim import weapons as Wp
+from neodeol.sim import match as Match
+from neodeol.sim import weapons as Wp
 
 
 def test_nuclear_shell_is_late_game_purchase() -> None:
@@ -35,13 +35,13 @@ import pathlib
 
 import pytest
 
-from talus import constants
-from talus.sim import match as Match
-from talus.sim import weapons as Wp
+from neodeol import constants
+from neodeol.sim import match as Match
+from neodeol.sim import weapons as Wp
 
 
 def _match_golden() -> dict | None:
-    env = os.environ.get("TALUS_REPLAY_DIR")
+    env = os.environ.get("NEODEOL_REPLAY_DIR")
     root = pathlib.Path(env) if env else None
     if root is None:
         here = pathlib.Path(__file__).resolve()

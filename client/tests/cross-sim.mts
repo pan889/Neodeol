@@ -21,7 +21,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-const simDir = path.join(ROOT, "server", "src", "talus", "sim");
+const simDir = path.join(ROOT, "server", "src", "neodeol", "sim");
 const replayDir = path.join(ROOT, "tests", "replays");
 
 const R = "\x1b[31m", G = "\x1b[32m", Y = "\x1b[33m", D = "\x1b[2m", X = "\x1b[0m";
@@ -36,7 +36,7 @@ const replays = fs.existsSync(replayDir)
 
 if (pyModules.length === 0 || replays.length === 0) {
   console.log(`${Y}SKIP${X}  교차 검증의 선행 조건이 없다`);
-  console.log(`  ${D}server/src/talus/sim/  Python 모듈 ${pyModules.length}개${X}`);
+  console.log(`  ${D}server/src/neodeol/sim/  Python 모듈 ${pyModules.length}개${X}`);
   console.log(`  ${D}tests/replays/         골든 리플레이 ${replays.length}개${X}`);
   console.log(`  ${D}골든이 없으면: node --experimental-strip-types client/tools/gen-golden.mts${X}`);
   process.exit(0);
@@ -99,7 +99,7 @@ const inDocker = spawnSync("docker", ["compose", "ps", "-q", "server"], {
 
 const [cmd, argv, opts] = inDocker
   ? ["docker", [
-      "compose", "exec", "-T", "-e", "TALUS_REPLAY_DIR=/app/replays", "server",
+      "compose", "exec", "-T", "-e", "NEODEOL_REPLAY_DIR=/app/replays", "server",
       "python", "-m", "pytest", "/app/tests/test_cross_sim.py", "-q", "-m", mark,
     ], { cwd: ROOT }]
   : ["python3", [

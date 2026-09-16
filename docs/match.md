@@ -6,7 +6,7 @@ AI 는 규칙이 아니라 **입력 생성기**라 `tools/prototype/ai.js` 에 �
 그 다음은 전부 `sim/` 이 정하므로 규칙 지문에도 안 들어간다.
 
 여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 5`의 잠정 기준선이다. 값을 바꾸면
-`MATCH_VERSION`, `server/src/talus/constants.py`, match 골든을 함께 갱신한다.
+`MATCH_VERSION`, `server/src/neodeol/constants.py`, match 골든을 함께 갱신한다.
 
 ---
 

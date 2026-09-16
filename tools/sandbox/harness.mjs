@@ -1,4 +1,4 @@
-/* Talus — Phase 0 헤드리스 검증 하네스
+/* Neodeol — Phase 0 헤드리스 검증 하네스
  *
  *   node tools/sandbox/harness.mjs
  *   node tools/sandbox/harness.mjs --repose      # 안식각만
@@ -23,8 +23,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 require(path.join(here, "automaton.js"));
 require(path.join(here, "lab.js"));
 
-const S = globalThis.TalusSim;
-const L = globalThis.TalusLab;
+const S = globalThis.NeodeolSim;
+const L = globalThis.NeodeolLab;
 
 const args = process.argv.slice(2);
 const only = (f) => args.length === 0 || args.includes(f);

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 무기 8종   docs/game-design.md §6.1 · docs/decisions.md C1 C9 B15
+   Neodeol — 무기 8종   docs/game-design.md §6.1 · docs/decisions.md C1 C9 B15
 
    Phase 1 프로토타입 무기표(`tools/prototype/weapons.js`, 지금은 삭제)의 정수 이식이다.
    규칙은 그대로고 float 만 없앴다. 프로토타입은 이제 이 파일에서 생성한 사본을 쓴다.

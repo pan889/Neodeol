@@ -213,7 +213,7 @@ head("5. 정착 — 가동 셀 0 으로 수렴하고, 강제 활성화해도 안
 head("6. TS 이식 ↔ Phase 0 JS 참조 구현 (Phase 2 완료 조건: 체감 동일)");
 {
   require(path.join(ROOT, "tools", "sandbox", "automaton.js"));
-  const JS = (globalThis as Record<string, any>).TalusSim;
+  const JS = (globalThis as Record<string, any>).NeodeolSim;
 
   /* 두 구현의 CFG 를 같게 맞춘다 */
   JS.CFG.slideSandQ8 = Terrain.CFG.slideSandQ8;

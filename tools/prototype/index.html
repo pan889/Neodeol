@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Talus — 프로토타입</title>
+<title>Neodeol — 프로토타입</title>
 <style>
   :root{
     --ink:#E8DFD2; --muted:#9A8F7F; --dim:#6E6478;
@@ -224,7 +224,7 @@
 <body>
 <div id="app">
 <aside id="controls">
-  <h1>Talus<small id="hdr">Field build · gameplay feel pass</small></h1>
+  <h1>Neodeol<small id="hdr">Field build · gameplay feel pass</small></h1>
   <div id="netStatus"><b id="netRoom">ROOM ------</b><span id="netConn">연결 준비 중</span></div>
 
   <h2>조준 <span id="whoTurn" style="color:var(--accent)"></span></h2>
@@ -347,7 +347,7 @@ import {
   fetchVersion,
 } from "../multiplayer/room-client.js";
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus 프로토타입 UI  [TOOL]
+   Neodeol 프로토타입 UI  [TOOL]
 
    시뮬레이션은 automaton.js(지형) / sim.js(탄도) / weapons.js / match.js 에 있다.
    여기에는 렌더러와 입력, 화면 전환만 둔다.
@@ -2260,7 +2260,7 @@ async function boot() {
   } else {
     showRange();
     newMatch();
-    log("<em>Talus 프로토타입</em> — 무기 8종 · 5라운드 · 상점 · AI\n"
+    log("<em>Neodeol 프로토타입</em> — 무기 8종 · 5라운드 · 상점 · AI\n"
       + "왼쪽에서 무기를 고르고 각도·파워를 맞춰 발사한다. 한 발의 착탄과 정착이 끝나야 다음 턴이 시작된다.");
   }
   requestAnimationFrame(frame);

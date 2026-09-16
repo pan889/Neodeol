@@ -1,6 +1,6 @@
 # 시뮬레이션 코어
 
-`server/src/talus/sim/`과 `client/src/sim/`이 **동일하게** 구현해야 하는 명세.
+`server/src/neodeol/sim/`과 `client/src/sim/`이 **동일하게** 구현해야 하는 명세.
 한쪽만 고치면 두 플레이어가 서로 다른 착탄점을 본다.
 
 지형 자동자는 분량이 커서 `docs/terrain.md`로 분리했다. 이 문서는 좌표계, 탄도, 폭발, 턴 진행을 다룬다.
@@ -382,7 +382,7 @@ PHASE_ROUND_END 라운드 종료 판정 → 상점 or 다음 생존 슬롯
 > 지형 자동자 상수(`SUBSTEPS`, `SLIDE_CHANCE_*`, `MAX_SETTLE_STEPS`)는 `docs/terrain.md` §4 에 있다.
 > `SUBSTEPS` 는 **시뮬레이션 상수가 아니라 표현 상수**다 (`terrain.md` §3.4).
 >
-> **기계 판독 사본:** `server/src/talus/constants.py`. 문서가 기준이고, 어긋나면 문서를 먼저 고친다.
+> **기계 판독 사본:** `server/src/neodeol/constants.py`. 문서가 기준이고, 어긋나면 문서를 먼저 고친다.
 > 미확정 상수는 그 파일의 `PROVISIONAL` 집합에 들어 있고 `GET /version` 이 목록을 노출한다.
 
 ### 8.1 사거리 검산 — 시작값은 목표 감각과 4배 어긋난다

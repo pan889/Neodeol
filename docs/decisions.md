@@ -99,7 +99,7 @@
 2. 확률·비율은 **Q8**(0~256), 삼각함수는 **Q12**, 항력 등 미세 계수는 **Q16**
 3. 실수 표기를 문서에서 없앤다. `0.75` 가 아니라 `192/256` 으로 적는다
    (`0.15 × 65536 = 9830.4` 처럼 정수가 아닌 값이 나오면 floor/round 선택이 갈려 구현이 갈라진다)
-4. 확정 상수는 **문서 표가 기준**이고, `server/src/talus/constants.py` 가 그 기계 판독 사본이다.
+4. 확정 상수는 **문서 표가 기준**이고, `server/src/neodeol/constants.py` 가 그 기계 판독 사본이다.
    사본이 어긋나면 문서를 고친 뒤 사본을 맞춘다
 5. 정수화 후 §11 실측을 다시 돌려 각도·정착 스텝이 5% 이내인지 확인한다. 벗어나면 상수를 재튜닝한다
 
@@ -117,7 +117,7 @@
 - 정착된 표면에서 2~6인 스폰을 균등 목표 ±72셀 탐색, 최소 간격 96셀로 선택
 - `MAPGEN_VERSION=1`, `kind=mapgen` 골든은 `.grid.gz` 없이 `mapSeed`만 기록
 
-TS `client/src/sim/mapgen.ts`와 Python `server/src/talus/sim/mapgen.py`가 교차 검증된다.
+TS `client/src/sim/mapgen.ts`와 Python `server/src/neodeol/sim/mapgen.py`가 교차 검증된다.
 
 <details><summary>결정 전 문제 기록</summary>
 
@@ -289,7 +289,7 @@ wind      = previousWind + delta
 클라이언트는 TypeScript 라 파일이 아예 다르다. 서버는 `client/src/sim/` 을 해시할 수도 없다.
 §7.3 의 목적(같은 규칙으로 계산하는지 확인)이 현재 정의로는 달성되지 않는다.
 
-한편 `server/src/talus/constants.py` 는 **상수 집합의 해시**로 `sim_version` 을 계산해
+한편 `server/src/neodeol/constants.py` 는 **상수 집합의 해시**로 `sim_version` 을 계산해
 `GET /version` 으로 노출한다. 이건 양쪽이 같은 값을 계산할 수 있다 — 상수는 문서가 기준이고
 두 구현이 같은 값을 담기 때문이다. 하지만 **상수가 안 바뀌고 로직만 바뀐 경우를 못 잡는다**
 (예: 해시 확산 단계 추가, 활성 집합 정의 변경 — Phase 0 에서 실제로 둘 다 일어났다).
@@ -454,7 +454,7 @@ TypeScript가 같은 값을 고른다.
 
 ### C1. 무기 파라미터 표의 **스키마** ✅
 
-**결정.** 아래 열로 확정하고 `server/src/talus/constants.py` 의 `WEAPON_TABLE` 이
+**결정.** 아래 열로 확정하고 `server/src/neodeol/constants.py` 의 `WEAPON_TABLE` 이
 **유일한 사본**이다. `sim/weapons.py` 가 이 표를 읽고, TS 하드코딩이 어긋나면 골든 헤더
 대조가 잡는다 (`test_cross_sim.py::_assert_tables_match`). 값은 여전히 밸런싱 대상이지만
 **표가 바뀌면 `SIM_VERSION` 과 규칙 지문이 따라온다** — 그 전에는 tuple 이라는 이유로

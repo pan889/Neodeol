@@ -1,9 +1,9 @@
 {
-  "name": "talus-client",
+  "name": "neodeol-client",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Talus 클라이언트 — 정수 서브픽셀 시뮬레이션 (Phase 2)",
+  "description": "Neodeol 클라이언트 — 정수 서브픽셀 시뮬레이션 (Phase 2)",
   "engines": {
     "node": ">=22.6"
   },

@@ -5,7 +5,7 @@
 ────────────────────────────────────────────────────────────────────────────
 왜 `SIM_VERSION` 으로는 안 되는가
 
-`SIM_VERSION` 은 `talus/constants.py` 전체의 SHA-256 이고 **Python 만 계산할 수 있다.**
+`SIM_VERSION` 은 `neodeol/constants.py` 전체의 SHA-256 이고 **Python 만 계산할 수 있다.**
 그래서 클라이언트는 `GET /version` 으로 받아 접속할 때 되돌려 보내고 있었고, 서버는
 그걸 자기 값과 비교했다 — **동어반복이라 원리적으로 불일치가 나지 않는다.**
 규칙이 다른 두 빌드가 같은 방에 들어갈 수 있었다.
@@ -28,7 +28,7 @@
 
 from __future__ import annotations
 
-from talus import constants
+from neodeol import constants
 
 from . import ballistics as B
 from . import mapgen as M

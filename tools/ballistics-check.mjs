@@ -1,4 +1,4 @@
-/* Talus — 탄도 상수 검산기
+/* Neodeol — 탄도 상수 검산기
  *
  *   node tools/ballistics-check.mjs
  *   node tools/ballistics-check.mjs --wind

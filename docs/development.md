@@ -16,7 +16,7 @@
 | 멀티 네트워크 하네스 | `tools/multiplayer/` | Phase 4. 코드형 룸·WebSocket·재접속 검증 | `/tools/multiplayer/` |
 | 탄도 검산기 | `tools/ballistics-check.mjs` | `simulation.md` §8 표를 재생성 | — |
 | 클라이언트 sim | `client/src/sim/` | Phase 2. 정수 TS 이식. **부동소수점 0개** | — |
-| 서버 sim | `server/src/talus/sim/` | Phase 3. 지형·탄도·무기·맵 생성·매치의 Python 미러 | — |
+| 서버 sim | `server/src/neodeol/sim/` | Phase 3. 지형·탄도·무기·맵 생성·매치의 Python 미러 | — |
 | 골든 리플레이 | `tests/replays/` | 자동자 20 + 장기 2 + 발사 + 맵 생성 + 매치 | — |
 | 룸 서버 | `server/` | 정적 서빙 + 코드형 로비 + 권위 WebSocket 룸 | `/` |
 
@@ -80,15 +80,15 @@ Chrome 두 탭의 Canvas 2턴, 컨테이너 내부 pytest를 순서대로 검사
 
 | 서비스 | 컨테이너 내부 | 호스트 기본 | 환경변수 |
 |---|---|---|---|
-| server | 8000 | 8000 | `TALUS_PORT` |
-| redis | 6379 | **16379** | `TALUS_REDIS_PORT` |
-| postgres | 5432 | **15432** | `TALUS_PG_PORT` |
+| server | 8000 | 8000 | `NEODEOL_PORT` |
+| redis | 6379 | **16379** | `NEODEOL_REDIS_PORT` |
+| postgres | 5432 | **15432** | `NEODEOL_PG_PORT` |
 
 컨테이너끼리는 compose 네트워크 내부 이름(`redis:6379`, `postgres:5432`)으로 통신하므로
 호스트 포트는 디버깅 편의일 뿐이다.
 
 ```bash
-TALUS_PORT=8080 docker compose up -d      # 또는 .env 파일에 적는다
+NEODEOL_PORT=8080 docker compose up -d      # 또는 .env 파일에 적는다
 ```
 
 ### 2.3 로그와 정리
@@ -117,7 +117,7 @@ node tools/sandbox/harness.mjs
 cd server
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-PYTHONPATH=src TALUS_STATIC_DIR=../tools uvicorn talus.net.app:app --reload
+PYTHONPATH=src NEODEOL_STATIC_DIR=../tools uvicorn neodeol.net.app:app --reload
 python -m pytest            # server/pyproject.toml 이 경로를 잡는다
 ```
 
@@ -241,7 +241,7 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 
 ## 5. `SIM_VERSION` 이 하는 일
 
-`server/src/talus/constants.py` 는 `docs/simulation.md` §8, `docs/terrain.md` §4,
+`server/src/neodeol/constants.py` 는 `docs/simulation.md` §8, `docs/terrain.md` §4,
 `docs/mapgen.md`, `docs/match.md`의 **기계 판독 사본**이다. **문서가 기준이고** 어긋나면 문서를 먼저 고친다.
 
 `SIM_VERSION` 은 이 상수 집합 전체의 SHA-256 앞 16자리다. 상수가 하나라도 바뀌면 값이 바뀐다.
@@ -287,7 +287,7 @@ tools/sandbox/              Phase 0 — 모래 자동자
 
 server/
   Dockerfile  requirements.txt  pyproject.toml
-  src/talus/
+  src/neodeol/
     constants.py              상수 사본 + SIM_VERSION
     net/app.py                FastAPI
     store/health.py           의존성 확인
@@ -313,6 +313,6 @@ client/
 |---|---|
 | `port is already allocated` | §2.2 — 호스트 포트 변경 |
 | `/readyz` 503 | Redis/PostgreSQL 미기동. `docker compose ps` 로 health 확인 |
-| `/sandbox/` 404 | `TALUS_STATIC_DIR` 이 `tools/` 를 안 가리킨다 |
+| `/sandbox/` 404 | `NEODEOL_STATIC_DIR` 이 `tools/` 를 안 가리킨다 |
 | pytest 가 `sim/` 을 못 찾음 | `PYTHONPATH=src`. 테스트는 설치된 패키지에서 경로를 찾으므로 컨테이너에서도 동작한다 |
 | 샌드박스에서 자동자를 고쳤는데 반영 안 됨 | `automaton.js` 는 정적 파일이다. 하드 리로드 |

@@ -6,7 +6,7 @@
    ───────────────────────────────────────────────────────────────────────────
    왜 `simVersion` 으로는 안 되는가
 
-   `SIM_VERSION` 은 `server/src/talus/constants.py` 전체의 SHA-256 이고 **Python 만
+   `SIM_VERSION` 은 `server/src/neodeol/constants.py` 전체의 SHA-256 이고 **Python 만
    계산할 수 있다.** 그래서 클라이언트는 `GET /version` 으로 받아 접속할 때 되돌려
    보내고 있었고, 서버는 그걸 자기 값과 비교했다 — **동어반복이라 원리적으로 불일치가
    나지 않는다.** 규칙이 다른 두 빌드가 같은 방에 들어갈 수 있었다.
@@ -46,7 +46,7 @@ function kindIndex(kind: Wp.WeaponKind): number {
 
 /**
  * 규칙 전체를 정수 수열로 편다. **양쪽 구현이 같은 순서로 같은 값을 내야 한다.**
- * 항목을 추가하면 `server/src/talus/sim/rules.py` 도 같이 고친다 —
+ * 항목을 추가하면 `server/src/neodeol/sim/rules.py` 도 같이 고친다 —
  * 한쪽만 고치면 모든 접속이 거부된다(안전한 방향이지만 원인을 찾기 어렵다).
  */
 export function ruleFingerprint(): number[] {

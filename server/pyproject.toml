@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "talus-server"
+name = "neodeol-server"
 version = "0.0.0"
-description = "Talus — 턴제 포병 대전 게임 서버"
+description = "Neodeol — 턴제 포병 대전 게임 서버"
 requires-python = ">=3.12"
 dynamic = ["dependencies"]
 

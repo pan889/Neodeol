@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from talus import constants
+from neodeol import constants
 
 from . import ballistics as B
 from . import mapgen as M

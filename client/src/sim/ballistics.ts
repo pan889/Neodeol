@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 탄도 · 탱크   docs/simulation.md §2 §4 §5 §6
+   Neodeol — 탄도 · 탱크   docs/simulation.md §2 §4 §5 §6
 
    Phase 1 프로토타입 탄도(`tools/prototype/sim.js`, 지금은 삭제)의 정수 이식이다.
    프로토타입은 이제 이 파일에서 생성한 사본을 쓴다. Phase 2 에서 실제로 없앤 float:
@@ -30,7 +30,7 @@ export const MAX_HP = 100;
 export const TANK_TILT_MAX10 = 140; // ±14.0°
 const TANK_TILT_SAMPLE = (TANK_W * 7) >> 4;
 
-/* ── 상수 (§8). `server/src/talus/constants.py` 가 기계 판독 사본이다 ──── */
+/* ── 상수 (§8). `server/src/neodeol/constants.py` 가 기계 판독 사본이다 ──── */
 export interface BallisticsConfig {
   gravity: number;
   powerScale: number;

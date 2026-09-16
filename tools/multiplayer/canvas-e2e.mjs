@@ -7,10 +7,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
-const base = process.env.TALUS_BASE || `http://localhost:${process.env.TALUS_PORT || "8000"}`;
+const base = process.env.NEODEOL_BASE || `http://localhost:${process.env.NEODEOL_PORT || "8000"}`;
 const chromeBin = process.env.CHROME_BIN || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-const savedSessionsKey = "talus.multiplayer.sessions.v1";
-const activeSessionKey = "talus.multiplayer.active.v1";
+const savedSessionsKey = "neodeol.multiplayer.sessions.v1";
+const activeSessionKey = "neodeol.multiplayer.active.v1";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -204,7 +204,7 @@ async function main() {
 
   const port = await freePort();
   const debugBase = `http://127.0.0.1:${port}`;
-  const profile = await mkdtemp(path.join(os.tmpdir(), "talus-canvas-e2e-"));
+  const profile = await mkdtemp(path.join(os.tmpdir(), "neodeol-canvas-e2e-"));
   const chromeOutput = { value: "" };
   const chrome = spawn(chromeBin, [
     "--headless=new",

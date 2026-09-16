@@ -16,7 +16,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-PORT="${TALUS_PORT:-8000}"
+PORT="${NEODEOL_PORT:-8000}"
 BASE="http://localhost:${PORT}"
 fail=0
 
@@ -61,7 +61,7 @@ probe /deps     200 'numpy'
 
 say "== 3. 개발 도구 =="
 probe /sandbox/ 200 '모래 자동자 샌드박스'
-probe /tools/prototype/ 200 'Talus'
+probe /tools/prototype/ 200 'Neodeol'
 probe /tools/multiplayer/ 200 'MULTIPLAYER NETWORK HARNESS'
 if node --check tools/multiplayer/multiplayer.js >/dev/null \
   && node --check tools/multiplayer/room-client.js >/dev/null \
@@ -92,7 +92,7 @@ if [ -z "$CHROME_BIN" ] && command -v chromium >/dev/null 2>&1; then
   CHROME_BIN="$(command -v chromium)"
 fi
 if [ -n "$CHROME_BIN" ]; then
-  if CHROME_BIN="$CHROME_BIN" TALUS_BASE="$BASE" node tools/multiplayer/canvas-e2e.mjs; then
+  if CHROME_BIN="$CHROME_BIN" NEODEOL_BASE="$BASE" node tools/multiplayer/canvas-e2e.mjs; then
     ok "호스트 → 게스트 2턴 · desync 0"
   else
     bad "멀티 Canvas 브라우저 E2E 실패"

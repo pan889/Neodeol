@@ -13,23 +13,23 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from talus import __version__, constants
-from talus.net.multiplayer import router as multiplayer_router
-from talus.room import RoomManager
-from talus.sim import rules as Rules
-from talus.store import check_postgres, check_redis
+from neodeol import __version__, constants
+from neodeol.net.multiplayer import router as multiplayer_router
+from neodeol.room import RoomManager
+from neodeol.sim import rules as Rules
+from neodeol.store import check_postgres, check_redis
 
 BOOT_TIME = time.time()
 
-REDIS_URL = os.environ.get("TALUS_REDIS_URL", "redis://127.0.0.1:6379/0")
-PG_DSN = os.environ.get("TALUS_PG_DSN", "postgresql://talus:talus@127.0.0.1:5432/talus")
-STATIC_DIR = Path(os.environ.get("TALUS_STATIC_DIR", "tools"))
-ENV = os.environ.get("TALUS_ENV", "dev")
-SIM_WORKERS = int(os.environ.get("TALUS_SIM_WORKERS", "2"))
+REDIS_URL = os.environ.get("NEODEOL_REDIS_URL", "redis://127.0.0.1:6379/0")
+PG_DSN = os.environ.get("NEODEOL_PG_DSN", "postgresql://neodeol:neodeol@127.0.0.1:5432/neodeol")
+STATIC_DIR = Path(os.environ.get("NEODEOL_STATIC_DIR", "tools"))
+ENV = os.environ.get("NEODEOL_ENV", "dev")
+SIM_WORKERS = int(os.environ.get("NEODEOL_SIM_WORKERS", "2"))
 
 
 def _find_trig_table() -> Path:
-    configured = os.environ.get("TALUS_TRIG_TABLE")
+    configured = os.environ.get("NEODEOL_TRIG_TABLE")
     candidates = [
         Path(configured) if configured else None,
         Path.cwd() / "tables" / "trig.bin",
@@ -53,7 +53,7 @@ async def lifespan(application: FastAPI):
         await manager.close()
 
 app = FastAPI(
-    title="Talus",
+    title="Neodeol",
     version=__version__,
     description="턴제 포병 대전 게임 서버 (개발 스캐폴드)",
     docs_url="/docs-api",
@@ -98,7 +98,7 @@ async def readyz() -> JSONResponse:
 async def version() -> dict[str, Any]:
     """시뮬레이션 규칙 신원.
 
-    `sim_version` 은 `talus.constants` 전체의 해시다. 클라이언트가 접속할 때
+    `sim_version` 은 `neodeol.constants` 전체의 해시다. 클라이언트가 접속할 때
     이 값이 다르면 두 쪽이 다른 규칙으로 계산하고 있다는 뜻이므로 같은 방에
     넣어서는 안 된다. `provisional` 이 비어 있지 않으면 아직 밸런싱 기준선이
     확정되지 않은 상태다.
@@ -160,16 +160,16 @@ async def index() -> str:
             f'<li><a href="{multiplayer}">Phase 4 — 멀티플레이 네트워크 하네스</a></li>'
         )
     if not links:
-        links.append("<li><em>개발 도구를 찾을 수 없다 (TALUS_STATIC_DIR 확인)</em></li>")
+        links.append("<li><em>개발 도구를 찾을 수 없다 (NEODEOL_STATIC_DIR 확인)</em></li>")
     tool_links = "\n".join(links)
-    return f"""<!doctype html><meta charset=utf-8><title>Talus dev</title>
+    return f"""<!doctype html><meta charset=utf-8><title>Neodeol dev</title>
 <style>
  body{{background:#120F17;color:#E8DFD2;font:14px/1.7 ui-sans-serif,system-ui;padding:40px;max-width:640px}}
  h1{{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#3DDCFF}}
  a{{color:#D99A5B}} code{{color:#B4FF3D}} ul{{padding-left:20px}}
  .dim{{color:#6E6478;font-size:12px}}
 </style>
-<h1>Talus — dev server</h1>
+<h1>Neodeol — dev server</h1>
 <p class=dim>env <code>{ENV}</code> · app <code>{__version__}</code> · sim <code>{constants.SIM_VERSION}</code></p>
 <ul>
 {tool_links}

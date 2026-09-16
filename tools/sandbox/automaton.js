@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 모래 붕괴 자동자 참조 구현  (docs/terrain.md §1~§8)
+   Neodeol — 모래 붕괴 자동자 참조 구현  (docs/terrain.md §1~§8)
 
    이 파일은 [SIM] 구획이다. **정수 연산만 쓴다.**
    float / Math.random / 시계 / 순회 순서 의존 금지.
@@ -72,7 +72,7 @@
 
   /* ── 튜닝 상수. §4 의 시작값이며 확정값이 아니다 ────────────────────── */
   var CFG = {
-    /* Q8 (0~256). server/src/talus/constants.py 와 같은 값을 유지한다.
+    /* Q8 (0~256). server/src/neodeol/constants.py 와 같은 값을 유지한다.
        정적 게이트(아래)에서 Q8 이 안식각을 연속 조절한다 — 실측 곡선은 terrain.md §4.2.
          256 → 26.6°   48 → 40.3°   0 → 44.2°(규칙 3 미적용)
        값은 밸런싱 대상이지만 조절 **방법**은 확정이다 (decisions.md A1). */
@@ -490,7 +490,7 @@
   function restore(s) { grid.set(s.g); simStep = s.st; rowActive.set(s.ra); mN = 0; lastMoved = 0; }
 
   /* ══ 공개 API ═════════════════════════════════════════════════════════ */
-  root.TalusSim = {
+  root.NeodeolSim = {
     W: W, H: H, N: N,
     EMPTY: EMPTY, SAND: SAND, SOIL: SOIL, SCREE: SCREE, ROCK: ROCK, BEDROCK: BEDROCK,
     MAT_NAME: MAT_NAME, VOID: VOID,
@@ -537,4 +537,4 @@
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
 /* node 에서 `import` 로 쓸 수 있게 한다. 브라우저는 이 줄을 만나지 않는다. */
-if (typeof module !== "undefined" && module.exports) module.exports = globalThis.TalusSim;
+if (typeof module !== "undefined" && module.exports) module.exports = globalThis.NeodeolSim;

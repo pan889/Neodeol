@@ -10,9 +10,9 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from talus import constants
-from talus.sim import mapgen as M
-from talus.sim import terrain as T
+from neodeol import constants
+from neodeol.sim import mapgen as M
+from neodeol.sim import terrain as T
 
 SEEDS = [0x1000 + i * 7919 for i in range(10)]
 

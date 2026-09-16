@@ -14,14 +14,14 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from talus import constants
-from talus.net.protocol import ErrorCode, RoomError, pack_message
-from talus.sim import match as Match
-from talus.sim import rules as Rules
+from neodeol import constants
+from neodeol.net.protocol import ErrorCode, RoomError, pack_message
+from neodeol.sim import match as Match
+from neodeol.sim import rules as Rules
 
 from .simulation import SimulationPool
 
-LOGGER = logging.getLogger("talus.room")
+LOGGER = logging.getLogger("neodeol.room")
 ROOM_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 

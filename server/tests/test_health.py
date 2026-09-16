@@ -9,7 +9,7 @@ from __future__ import annotations
 import httpx
 import pytest
 
-from talus.net.app import app
+from neodeol.net.app import app
 
 
 @pytest.fixture
@@ -54,7 +54,7 @@ async def test_sandbox_is_served(client: httpx.AsyncClient) -> None:
     async with client as c:
         r = await c.get("/sandbox/")
     if r.status_code == 404:
-        pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
+        pytest.skip("NEODEOL_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
     assert r.status_code == 200
     assert "모래 자동자 샌드박스" in r.text
 
@@ -65,11 +65,11 @@ async def test_prototype_is_linked_and_served(client: httpx.AsyncClient) -> None
         root = await c.get("/")
         prototype = await c.get("/tools/prototype/")
     if prototype.status_code == 404:
-        pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
+        pytest.skip("NEODEOL_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
     assert root.status_code == 200
     assert "/tools/prototype/" in root.text
     assert prototype.status_code == 200
-    assert "Talus" in prototype.text
+    assert "Neodeol" in prototype.text
 
 
 async def test_multiplayer_harness_is_linked_and_served(client: httpx.AsyncClient) -> None:
@@ -78,7 +78,7 @@ async def test_multiplayer_harness_is_linked_and_served(client: httpx.AsyncClien
         root = await c.get("/")
         multiplayer = await c.get("/tools/multiplayer/")
     if multiplayer.status_code == 404:
-        pytest.skip("TALUS_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
+        pytest.skip("NEODEOL_STATIC_DIR 이 tools/ 를 가리키지 않는다 (로컬 pytest 실행)")
     assert root.status_code == 200
     assert "/tools/multiplayer/" in root.text
     assert multiplayer.status_code == 200

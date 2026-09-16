@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Talus — 모래 자동자 샌드박스 (Phase 0)</title>
+<title>Neodeol — 모래 자동자 샌드박스 (Phase 0)</title>
 <style>
   /* 팔레트 출처: docs/rendering.md §1.3 */
   :root{
@@ -95,7 +95,7 @@
 
 <!-- ══════════════ 왼쪽: 편집 + 상수 ══════════════ -->
 <aside>
-  <h1>Talus Sandbox<small>Phase 0 — 모래 붕괴 자동자 튜닝<br>docs/terrain.md §3 · §4</small></h1>
+  <h1>Neodeol Sandbox<small>Phase 0 — 모래 붕괴 자동자 튜닝<br>docs/terrain.md §3 · §4</small></h1>
 
   <h2>시뮬레이션</h2>
   <div class="row">
@@ -258,13 +258,13 @@
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus 샌드박스 UI  [TOOL]
+   Neodeol 샌드박스 UI  [TOOL]
 
    시뮬레이션은 automaton.js 에, 프리셋·계측은 lab.js 에 있다.
    여기에는 렌더러와 UI 배선만 둔다. **지형을 보기 좋게 보정하지 않는다**
    (절대 규칙 6). 렌더러는 격자를 읽기만 한다.
    ═══════════════════════════════════════════════════════════════════════════ */
-const S = window.TalusSim, L = window.TalusLab;
+const S = window.NeodeolSim, L = window.NeodeolLab;
 const W = S.W, H = S.H, N = S.N, grid = S.grid;
 const EMPTY = S.EMPTY, SAND = S.SAND, SOIL = S.SOIL, SCREE = S.SCREE, ROCK = S.ROCK, BEDROCK = S.BEDROCK;
 const MAT_NAME = S.MAT_NAME, VOID = S.VOID;

@@ -1,8 +1,8 @@
 """매치 진행 규칙의 작은 불변식."""
 
-from talus.sim import ballistics as B
-from talus.sim import match as Match
-from talus.sim import weapons as Wp
+from neodeol.sim import ballistics as B
+from neodeol.sim import match as Match
+from neodeol.sim import weapons as Wp
 
 
 def test_turn_wind_changes_gradually_and_varies() -> None:
@@ -39,8 +39,8 @@ import pathlib
 
 import pytest
 
-from talus.sim import terrain as T
-from talus.sim import trig
+from neodeol.sim import terrain as T
+from neodeol.sim import trig
 
 
 def _find_trig() -> bytes | None:

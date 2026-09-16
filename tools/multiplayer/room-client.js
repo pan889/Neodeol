@@ -1,7 +1,7 @@
 import { ruleHash } from "./sim/rules.js";
 
-const ACTIVE_SESSION_KEY = "talus.multiplayer.active.v1";
-const SAVED_SESSIONS_KEY = "talus.multiplayer.sessions.v1";
+const ACTIVE_SESSION_KEY = "neodeol.multiplayer.active.v1";
+const SAVED_SESSIONS_KEY = "neodeol.multiplayer.sessions.v1";
 
 export function readSavedSessions() {
   try {
@@ -92,7 +92,7 @@ export class RoomSocket {
     socket.onmessage = (event) => {
       if (!this.isCurrent(socket, epoch)) return;
       try {
-        this.onMessage(window.TalusMsgpack.decode(event.data));
+        this.onMessage(window.NeodeolMsgpack.decode(event.data));
       } catch (error) {
         this.onStatus({ state: "decode-error", error });
       }
@@ -111,7 +111,7 @@ export class RoomSocket {
 
   send(message) {
     if (!this.socket || this.socket.readyState !== WebSocket.OPEN) return false;
-    this.socket.send(window.TalusMsgpack.encode(message));
+    this.socket.send(window.NeodeolMsgpack.encode(message));
     return true;
   }
 

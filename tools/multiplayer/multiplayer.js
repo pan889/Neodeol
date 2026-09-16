@@ -3,10 +3,10 @@ import { ruleHash } from "./sim/rules.js";
 (function () {
   "use strict";
 
-  const MP = window.TalusMsgpack;
-  const ACTIVE_SESSION_KEY = "talus.multiplayer.active.v1";
-  const SAVED_SESSIONS_KEY = "talus.multiplayer.sessions.v1";
-  const LEGACY_SESSION_KEY = "talus.multiplayer.session";
+  const MP = window.NeodeolMsgpack;
+  const ACTIVE_SESSION_KEY = "neodeol.multiplayer.active.v1";
+  const SAVED_SESSIONS_KEY = "neodeol.multiplayer.sessions.v1";
+  const LEGACY_SESSION_KEY = "neodeol.multiplayer.session";
   const $ = (id) => document.getElementById(id);
   const state = {
     version: null,
@@ -118,7 +118,7 @@ import { ruleHash } from "./sim/rules.js";
     $("mySlot").textContent = `slot ${session.slot}`;
     $("lobbyPanel").classList.add("hidden");
     $("sessionPanel").classList.remove("hidden");
-    document.title = `Talus · ${session.roomCode}`;
+    document.title = `Neodeol · ${session.roomCode}`;
   }
 
   function resumeSelectedSession() {

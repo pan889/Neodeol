@@ -31,7 +31,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from talus import constants
+from neodeol import constants
 
 from . import trig
 from .intmath import clamp_int, floor_div, iabs, isqrt
@@ -52,7 +52,7 @@ TANK_TILT_MAX10 = 140  # ±14.0°
 TANK_TILT_SAMPLE = (TANK_W * 7) >> 4
 
 
-# ── 상수 (§8). `talus/constants.py` 가 기계 판독 사본이다 ──────────────────
+# ── 상수 (§8). `neodeol/constants.py` 가 기계 판독 사본이다 ──────────────────
 @dataclass
 class BallisticsConfig:
     gravity: int = 12

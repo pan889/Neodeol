@@ -14,7 +14,7 @@ const context = vm.createContext({
 });
 vm.runInContext(source, context, { filename: "msgpack.js" });
 
-const { encode, decode } = context.window.TalusMsgpack;
+const { encode, decode } = context.window.NeodeolMsgpack;
 const sample = {
   t: "fullState",
   deadlineMs: 1_786_000_000_123,

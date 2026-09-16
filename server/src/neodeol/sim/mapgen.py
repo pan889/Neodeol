@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 import numpy.typing as npt
 
-from talus import constants
+from neodeol import constants
 
 from .intmath import clamp_int, floor_div, hash32_scalar, iabs
 from .terrain import BEDROCK, EMPTY, H, N, ROCK, SAND, SCREE, SOIL, W

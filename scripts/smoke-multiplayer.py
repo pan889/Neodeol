@@ -12,7 +12,7 @@ from urllib.request import Request, urlopen
 import msgpack
 import websockets
 
-HTTP_BASE = os.environ.get("TALUS_SMOKE_BASE", "http://127.0.0.1:8000").rstrip("/")
+HTTP_BASE = os.environ.get("NEODEOL_SMOKE_BASE", "http://127.0.0.1:8000").rstrip("/")
 parsed_base = urlparse(HTTP_BASE)
 WS_BASE = f"{'wss' if parsed_base.scheme == 'https' else 'ws'}://{parsed_base.netloc}"
 

@@ -186,7 +186,7 @@ msgpack. 모든 메시지는 `{t: <type>, ...}` 형태.
 > 같은 방에 들어갈 수 있었다. desync 가 나기 전까지 아무도 모른다.
 >
 > `ruleHash` 는 다르다. 양쪽이 **각자의 규칙 표에서** 계산하므로 값이 갈라져 있으면
-> 지문이 갈라진다. `client/src/sim/rules.ts` 와 `server/src/talus/sim/rules.py` 가
+> 지문이 갈라진다. `client/src/sim/rules.ts` 와 `server/src/neodeol/sim/rules.py` 가
 > 같은 정수 수열을 만들고, 그 일치는 `test_rule_hash_matches_typescript` 가 지킨다.
 
 `simVersion` 은 남겨 둔다 — 서버 빌드 식별과 `/version` 표시에 쓰고, `constants.py` 를
@@ -417,7 +417,7 @@ AI 인계가 훨씬 낫다.
 join 시 클라가 simVersion 전송 → 서버와 불일치하면 새로고침 유도
 ```
 
-**`simVersion` 은 상수 집합과 `RULES_VERSION`의 해시다.** `server/src/talus/constants.py` 의
+**`simVersion` 은 상수 집합과 `RULES_VERSION`의 해시다.** `server/src/neodeol/constants.py` 의
 `SIM_VERSION` — 해시 대상 상수 전체를 정렬 JSON 으로 직렬화한 SHA-256 의 앞 16자리다
 (`docs/development.md` §5). 상수값이 그대로인 절차·알고리즘 변경은 `RULES_VERSION`을 올린다.
 

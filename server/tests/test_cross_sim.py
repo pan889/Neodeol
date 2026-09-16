@@ -27,7 +27,7 @@ import pathlib
 import numpy as np
 import pytest
 
-from talus.sim import terrain as T
+from neodeol.sim import terrain as T
 
 
 def _find_repo_root() -> pathlib.Path | None:
@@ -42,10 +42,10 @@ def _replay_dir() -> pathlib.Path | None:
     """골든 리플레이 위치.
 
     컨테이너에서는 `/app/tests` 가 이미 `server/tests` 라 저장소 루트의
-    `tests/replays` 와 이름이 겹친다. 그래서 `TALUS_REPLAY_DIR` 로 명시하고,
+    `tests/replays` 와 이름이 겹친다. 그래서 `NEODEOL_REPLAY_DIR` 로 명시하고,
     없으면 저장소 루트 기준으로 찾는다 (호스트 직접 실행).
     """
-    env = os.environ.get("TALUS_REPLAY_DIR")
+    env = os.environ.get("NEODEOL_REPLAY_DIR")
     if env:
         p = pathlib.Path(env)
         return p if p.is_dir() else None
@@ -143,7 +143,7 @@ def _assert_ballistics_match(header: dict) -> None:
     확인으로 바꾸면 둘 다 사라진다. 밸런스를 의도적으로 바꿨다면 골든을 재생성하면 되고,
     그때 이 검사가 "재생성을 잊었다"를 잡는다.
     """
-    from talus.sim import ballistics as B
+    from neodeol.sim import ballistics as B
 
     for key, value in header["ballistics"].items():
         snake = "".join("_" + char.lower() if char.isupper() else char for char in key)
@@ -165,7 +165,7 @@ def _assert_tables_match(header: dict) -> None:
     실제로 그런 상태였다: 무기 8종의 값이 양쪽 소스에만 있어서 `SIM_VERSION` 해시에
     아예 안 들어갔고, 밸런스를 바꿔도 핸드셰이크가 통과했다.
     """
-    from talus import constants
+    from neodeol import constants
 
     got_weapons = [list(row) for row in constants.WEAPON_TABLE]
     assert header["weapons"] == got_weapons, (
@@ -223,9 +223,9 @@ def test_golden_set_is_complete() -> None:
 @pytest.mark.parametrize("path", MAPGEN_REPLAYS, ids=lambda p: p.stem)
 def test_cross_sim_mapgen(path: pathlib.Path) -> None:
     """사이드카 없이 초기 격자·정착·스폰을 TS 골든과 대조한다."""
-    from talus import constants
-    from talus.sim import mapgen as M
-    from talus.sim.intmath import hash32_scalar
+    from neodeol import constants
+    from neodeol.sim import mapgen as M
+    from neodeol.sim.intmath import hash32_scalar
 
     header, records = _load(path)
     assert header["mapgenVersion"] == M.MAPGEN_VERSION == constants.MAPGEN_VERSION
@@ -427,7 +427,7 @@ def _trig_bytes() -> bytes | None:
 
 def _pts_hash(pts: list[tuple[int, int]]) -> str:
     """TS 의 ptsHash 와 같은 값 — Int32Array 리틀엔디언 위의 FNV-1a."""
-    from talus.sim.intmath import fnv1a32, hex8
+    from neodeol.sim.intmath import fnv1a32, hex8
 
     buf = bytearray()
     for x, y in pts:
@@ -472,11 +472,11 @@ def _match_outcome(outcome) -> dict:
 @pytest.mark.parametrize("path", MATCH_REPLAYS, ids=lambda p: p.stem)
 def test_cross_sim_match(path: pathlib.Path) -> None:
     """매치 골든을 mapSeed + 시간순 intent + purchases 로 처음부터 재생한다."""
-    from talus import constants
-    from talus.sim import ballistics as B
-    from talus.sim import mapgen as M
-    from talus.sim import match as Match
-    from talus.sim import trig
+    from neodeol import constants
+    from neodeol.sim import ballistics as B
+    from neodeol.sim import mapgen as M
+    from neodeol.sim import match as Match
+    from neodeol.sim import trig
 
     blob = _trig_bytes()
     if blob is None:
@@ -588,9 +588,9 @@ def test_cross_sim_shots(path: pathlib.Path) -> None:
 
     **절차가 `client/tools/gen-golden.mts` 의 발사 블록과 1:1이다. 한쪽만 고치면 안 된다.**
     """
-    from talus.sim import ballistics as B
-    from talus.sim import trig
-    from talus.sim import weapons as Wp
+    from neodeol.sim import ballistics as B
+    from neodeol.sim import trig
+    from neodeol.sim import weapons as Wp
 
     blob = _trig_bytes()
     if blob is None:
@@ -727,7 +727,7 @@ def test_shot_replay_exercises_every_weapon() -> None:
 
     무기를 하나 추가하고 골든을 재생성하지 않으면 그 무기는 **검증 없이** 들어간다.
     """
-    from talus.sim import weapons as Wp
+    from neodeol.sim import weapons as Wp
 
     if not SHOT_REPLAYS:
         pytest.skip("kind=shots 리플레이가 없다")
@@ -748,7 +748,7 @@ def test_rule_hash_matches_typescript() -> None:
 
     골든 헤더에 실린 지문과 비교한다 — 골든은 TS 가 만들기 때문이다.
     """
-    from talus.sim import rules as Rules
+    from neodeol.sim import rules as Rules
 
     heads = [_load(p)[0] for p in REPLAYS]
     carried = {h["ruleHash"] for h in heads if "ruleHash" in h}
@@ -758,5 +758,5 @@ def test_rule_hash_matches_typescript() -> None:
     got = carried.pop()
     assert got == Rules.RULE_HASH, (
         f"규칙 지문이 갈라졌다\n  TS(골든) {got}\n  Python    {Rules.RULE_HASH}\n"
-        "  → client/src/sim/rules.ts 와 server/src/talus/sim/rules.py 의 수열을 대조한다"
+        "  → client/src/sim/rules.ts 와 server/src/neodeol/sim/rules.py 의 수열을 대조한다"
     )

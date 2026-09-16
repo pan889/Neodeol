@@ -7,10 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Body, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field
 
-from talus import constants
-from talus.sim import rules as Rules
-from talus.net.protocol import ErrorCode, RoomError, pack_message, unpack_message
-from talus.room.service import Room, RoomManager, Seat
+from neodeol import constants
+from neodeol.sim import rules as Rules
+from neodeol.net.protocol import ErrorCode, RoomError, pack_message, unpack_message
+from neodeol.room.service import Room, RoomManager, Seat
 
 router = APIRouter()
 

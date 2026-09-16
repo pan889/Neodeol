@@ -61,7 +61,7 @@ harness.mjs    헤드리스 검증 — node tools/sandbox/harness.mjs
 
 > `server/` 와 `docker-compose.yml` 이 존재하지만 **게임 서버가 아니라 개발 인프라**다 —
 > 샌드박스를 URL 로 열고, Redis/PostgreSQL 연결을 확인하고, 상수 사본을 노출한다.
-> `talus/sim/` 에 코드를 넣는 것은 여전히 Phase 3 이다. `docs/development.md`
+> `neodeol/sim/` 에 코드를 넣는 것은 여전히 Phase 3 이다. `docs/development.md`
 
 ---
 
@@ -155,7 +155,7 @@ tools/gen_trig.py            tables/trig.bin 생성기
 
 1. 스케일은 2의 거듭제곱만. 확률·비율은 Q8, 삼각함수는 Q12, 미세 계수는 Q16
 2. 문서에서 실수 표기를 없앤다. `0.75` 가 아니라 `192/256`
-3. 확정 상수는 **문서 표가 기준**이고 `server/src/talus/constants.py` 가 기계 판독 사본이다
+3. 확정 상수는 **문서 표가 기준**이고 `server/src/neodeol/constants.py` 가 기계 판독 사본이다
 4. 정수화 후 `harness.mjs` 실측을 다시 돌려 각도·정착 스텝이 5% 이내인지 확인한다
 
 **완료 조건** — `node --experimental-strip-types client/tests/determinism.mts`
@@ -181,7 +181,7 @@ Python 포팅, 서버 로직, 렌더링 개선.
 
 ## Phase 3 — 서버 미러 ✅ 완료
 
-`server/src/talus/sim/`을 만든다. **TypeScript 구현의 1:1 번역이며 창의성을 발휘하지 않는다.**
+`server/src/neodeol/sim/`을 만든다. **TypeScript 구현의 1:1 번역이며 창의성을 발휘하지 않는다.**
 
 > **포팅 방향은 TS → Python 이다.** `CLAUDE.md` §저장소 구조의
 > "client/src/ sim/ ← server sim의 TypeScript 포팅" 서술과 방향이 반대였다.
@@ -189,7 +189,7 @@ Python 포팅, 서버 로직, 렌더링 개선.
 > `CLAUDE.md` 를 이에 맞춰 고쳤다.
 
 ```
-server/src/talus/sim/
+server/src/neodeol/sim/
   intmath.py     [SIM] floor_div · isqrt · iabs · clamp_int · hash32 (numpy 벡터 + 스칼라)
   trig.py        [SIM] tables/trig.bin 조회. **파일은 호출자가 읽어 넣는다**
   terrain.py     [SIM] numpy 벡터화 자동자, carve/deposit, 연결성

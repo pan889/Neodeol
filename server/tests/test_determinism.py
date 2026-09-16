@@ -25,21 +25,21 @@ import pathlib
 import numpy as np
 import pytest
 
-import talus.sim
-from talus import constants
+import neodeol.sim
+from neodeol import constants
 
-#: 격자 폭. `talus.sim.terrain` 을 import 하지 않고도 쓰려고 여기 둔다
+#: 격자 폭. `neodeol.sim.terrain` 을 import 하지 않고도 쓰려고 여기 둔다
 W_FULL = 960
 
 # `sim/` 은 설치된 패키지에서 찾는다. 저장소 레이아웃을 가정하면 컨테이너 안에서
 # (/app/tests 로 마운트되어 상대 경로가 달라진다) 깨진다.
-SIM_DIR = pathlib.Path(talus.sim.__file__).resolve().parent
+SIM_DIR = pathlib.Path(neodeol.sim.__file__).resolve().parent
 
 
 def _find_repo_root() -> pathlib.Path | None:
     """`docs/` 나 `CLAUDE.md` 를 표지로 삼아 저장소 루트를 찾는다.
 
-    호스트에서는 `/Users/.../talus`, 컨테이너에서는 `/app` 이 된다.
+    호스트에서는 `/Users/.../neodeol`, 컨테이너에서는 `/app` 이 된다.
     찾지 못하면 저장소 파일에 의존하는 테스트를 skip 한다.
     """
     here = pathlib.Path(__file__).resolve()
@@ -226,7 +226,7 @@ _SIM_MODULES = sorted(p.stem for p in SIM_DIR.glob("*.py") if p.stem != "__init_
 
 def _run_once(seed: int, steps: int) -> tuple[int, int, int]:
     """시드에서 격자를 만들고 carve → N스텝. (체크섬, 질량, 이동 셀 수)"""
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     T.CFG.seed = seed
     T.reset_gate_cache()
@@ -348,7 +348,7 @@ def _scatter(seed: int, x0: int, x1: int, y0: int, y1: int) -> None:
     규칙이 순환(위로 올라가는 이동, 두 셀이 자리를 맞바꾸는 이동)을 만들면
     그건 정착이 아니라 **영원히 안 끝나는 상태**이고, 자연 지형으로는 잘 안 드러난다.
     """
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     T.CFG.seed = seed
     T.reset_gate_cache()
@@ -367,7 +367,7 @@ def _scatter(seed: int, x0: int, x1: int, y0: int, y1: int) -> None:
 
 def _settle(limit: int) -> int:
     """정착까지의 스텝 수. 상한에 걸리면 -1."""
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     steps = 0
     while steps < limit:
@@ -490,8 +490,8 @@ def test_sim_modules_do_not_keep_a_second_copy_of_the_tables() -> None:
 
     사본이 둘이면 한쪽만 고쳐지고, 그때 `SIM_VERSION` 은 안 고쳐진 쪽을 해시한다.
     """
-    from talus.sim import mapgen as M
-    from talus.sim import weapons as Wp
+    from neodeol.sim import mapgen as M
+    from neodeol.sim import weapons as Wp
 
     assert len(Wp.WEAPONS) == len(constants.WEAPON_TABLE)
     for weapon, row in zip(Wp.WEAPONS, constants.WEAPON_TABLE, strict=True):

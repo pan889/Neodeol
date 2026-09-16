@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 정수 수학 헬퍼   docs/simulation.md §2.2 · §5.1, docs/terrain.md §7
+   Neodeol — 정수 수학 헬퍼   docs/simulation.md §2.2 · §5.1, docs/terrain.md §7
 
    **`sim/` 안에서 나눗셈과 32비트 해시가 허용되는 유일한 파일이다.**
    `tools/check-no-float.mjs` 가 이 파일만 화이트리스트로 예외 처리한다.

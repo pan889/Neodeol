@@ -14,7 +14,7 @@
 **파일을 여기서 읽지 않는다.** `sim/` 은 I/O 를 하지 않는다 (CLAUDE.md 절대 규칙 1).
 읽기는 호출자 책임이고 이 모듈은 검증과 조회만 한다 — TS 쪽과 같은 구조다.
 
-    from talus.sim import trig
+    from neodeol.sim import trig
     trig.load_trig(pathlib.Path("tables/trig.bin").read_bytes())
     vx = (v0 * trig.cos_q12(angle10)) >> 12
     vy = -((v0 * trig.sin_q12(angle10)) >> 12)   # 괄호 필수 — §2.2

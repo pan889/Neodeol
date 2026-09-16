@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   Talus — 샌드박스 실험 도구  [TOOL]
+   Neodeol — 샌드박스 실험 도구  [TOOL]
 
    프리셋, 계측, 검증 스위트. **여기는 float 를 써도 된다.**
    계측 결과를 시뮬레이션에 되먹이지 않는 것만 지킨다 (절대 규칙 6).
@@ -10,7 +10,7 @@
    ═══════════════════════════════════════════════════════════════════════════ */
 (function (root) {
   "use strict";
-  var S = root.TalusSim;
+  var S = root.NeodeolSim;
   if (!S) throw new Error("automaton.js 를 먼저 로드해야 한다");
 
   var W = S.W, H = S.H, N = S.N, grid = S.grid;
@@ -388,7 +388,7 @@
       ? performance.now() : Number(process.hrtime.bigint() / 1000n) / 1000;
   }
 
-  root.TalusLab = {
+  root.NeodeolLab = {
     fillRect: fillRect, isqrt: isqrt, ridge: ridge,
     PRESETS: PRESETS, loadPreset: loadPreset, LEG: LEG,
     sealEdges: sealEdges, EDGE_SEAL_COLS: EDGE_SEAL_COLS,
@@ -403,4 +403,4 @@
   };
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
-if (typeof module !== "undefined" && module.exports) module.exports = globalThis.TalusLab;
+if (typeof module !== "undefined" && module.exports) module.exports = globalThis.NeodeolLab;

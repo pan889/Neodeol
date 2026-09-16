@@ -10,9 +10,9 @@ from typing import Any
 
 import numpy as np
 
-from talus.sim import match as Match
-from talus.sim import terrain as T
-from talus.sim import trig
+from neodeol.sim import match as Match
+from neodeol.sim import terrain as T
+from neodeol.sim import trig
 
 _LOADED_TRIG_PATH: str | None = None
 

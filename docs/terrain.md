@@ -266,7 +266,7 @@ flipBit(dst) hash32(seed, dstX, dstY, step) & 1
 한쪽이 floor, 다른 쪽이 round 를 써서 갈라진다. 게이트는 §7.1.
 
 **`SUBSTEPS` 는 이 표에 있지만 시뮬레이션 상수가 아니다.** §3.4 대로 표현 상수이므로
-클라이언트에만 존재하고, `server/src/talus/constants.py` 와 `SIM_VERSION` 해시에 들어가지 않는다.
+클라이언트에만 존재하고, `server/src/neodeol/constants.py` 와 `SIM_VERSION` 해시에 들어가지 않는다.
 들어가면 `SUBSTEPS` 만 다른 두 클라이언트가 같은 방에 못 들어가 — 저사양 기기가 값을 낮추는 것을
 막아버린다. `server/tests/test_determinism.py::test_presentation_constants_are_not_in_sim_version`
 이 이를 강제한다.

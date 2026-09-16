@@ -1,4 +1,4 @@
-name: talus
+name: neodeol
 
 # 로컬 개발용 스택. 배포(EKS)는 docs/deployment.md 를 따른다.
 #   docker compose up -d --build
@@ -13,32 +13,32 @@ name: talus
 # 개발 기계에는 이미 다른 Redis/PostgreSQL 이 떠 있는 경우가 많아서, 표준 포트를
 # 점유하면 "포트가 이미 할당됨"으로 스택이 안 뜬다. 컨테이너끼리는 compose 네트워크
 # 내부 이름(redis:6379, postgres:5432)으로 통신하므로 호스트 포트는 디버깅 편의일 뿐이다.
-#   TALUS_PORT=8080 docker compose up -d      # 또는 .env 파일에 적는다
+#   NEODEOL_PORT=8080 docker compose up -d      # 또는 .env 파일에 적는다
 
 services:
   server:
     build:
       context: ./server
       dockerfile: Dockerfile
-    image: talus-server:dev
-    container_name: talus-server
+    image: neodeol-server:dev
+    container_name: neodeol-server
     restart: unless-stopped
     command: >
-      uvicorn talus.net.app:app
+      uvicorn neodeol.net.app:app
       --host 0.0.0.0 --port 8000
       --reload --reload-dir /app/src
     environment:
-      TALUS_ENV: dev
-      TALUS_LOG_LEVEL: info
-      TALUS_REDIS_URL: redis://redis:6379/0
-      TALUS_PG_DSN: postgresql://talus:talus@postgres:5432/talus
-      TALUS_STATIC_DIR: /app/tools
-      TALUS_REPLAY_DIR: /app/replays
-      TALUS_TRIG_TABLE: /app/tables/trig.bin
-      TALUS_SIM_WORKERS: 2
+      NEODEOL_ENV: dev
+      NEODEOL_LOG_LEVEL: info
+      NEODEOL_REDIS_URL: redis://redis:6379/0
+      NEODEOL_PG_DSN: postgresql://neodeol:neodeol@postgres:5432/neodeol
+      NEODEOL_STATIC_DIR: /app/tools
+      NEODEOL_REPLAY_DIR: /app/replays
+      NEODEOL_TRIG_TABLE: /app/tables/trig.bin
+      NEODEOL_SIM_WORKERS: 2
       PYTHONPATH: /app/src
     ports:
-      - "${TALUS_PORT:-8000}:8000"
+      - "${NEODEOL_PORT:-8000}:8000"
     volumes:
       - ./server/src:/app/src:ro
       - ./server/tests:/app/tests:ro
@@ -65,11 +65,11 @@ services:
   # 룸 상태 저장소. 턴제라 트래픽이 낮아 단일 인스턴스로 충분하다.
   redis:
     image: redis:7-alpine
-    container_name: talus-redis
+    container_name: neodeol-redis
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "no", "--save", ""]
     ports:
-      - "${TALUS_REDIS_PORT:-16379}:6379"
+      - "${NEODEOL_REDIS_PORT:-16379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -79,19 +79,19 @@ services:
   # 전적·상점 저장소.
   postgres:
     image: postgres:16-alpine
-    container_name: talus-postgres
+    container_name: neodeol-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: talus
-      POSTGRES_PASSWORD: talus
-      POSTGRES_DB: talus
+      POSTGRES_USER: neodeol
+      POSTGRES_PASSWORD: neodeol
+      POSTGRES_DB: neodeol
       POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     ports:
-      - "${TALUS_PG_PORT:-15432}:5432"
+      - "${NEODEOL_PG_PORT:-15432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U talus -d talus"]
+      test: ["CMD-SHELL", "pg_isready -U neodeol -d neodeol"]
       interval: 5s
       timeout: 3s
       retries: 10

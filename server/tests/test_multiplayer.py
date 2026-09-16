@@ -8,10 +8,10 @@ from urllib.parse import urlencode
 
 from fastapi.testclient import TestClient
 
-from talus import constants
-from talus.net.app import app
-from talus.net.protocol import ErrorCode, pack_message, unpack_message
-from talus.sim.intmath import fnv1a32
+from neodeol import constants
+from neodeol.net.app import app
+from neodeol.net.protocol import ErrorCode, pack_message, unpack_message
+from neodeol.sim.intmath import fnv1a32
 
 
 def _repo_root() -> pathlib.Path | None:
@@ -204,7 +204,7 @@ def test_two_player_turn_desync_and_reconnect() -> None:
 # ══════════════════════════════════════════════════════════════════════════
 import asyncio
 
-from talus.room.service import Room, Seat
+from neodeol.room.service import Room, Seat
 
 
 def test_cancel_tasks_kills_every_task_on_the_room() -> None:
@@ -261,7 +261,7 @@ import dataclasses
 
 import msgpack
 
-from talus.sim import rules as Rules
+from neodeol.sim import rules as Rules
 
 
 def _open(client, code: str, token: str, *, rule_hash: str, protocol: int) -> dict:
@@ -277,7 +277,7 @@ def test_handshake_rejects_a_different_rule_set() -> None:
     """규칙 지문이 다르면 접속을 거부한다. **이 검사가 실제로 발화해야 한다.**"""
     from fastapi.testclient import TestClient
 
-    from talus.net.app import app
+    from neodeol.net.app import app
 
     with TestClient(app) as client:
         room = client.post("/api/rooms", json={"name": "host", "maxPlayers": 2}).json()
@@ -300,7 +300,7 @@ def test_rule_hash_is_not_the_server_constants_hash() -> None:
     `SIM_VERSION` 은 `constants.py` 전체의 SHA-256(Python 전용)이고,
     지문은 규칙 값만 담은 정수 수열의 FNV-1a(양쪽 계산 가능)다.
     """
-    from talus import constants
+    from neodeol import constants
 
     assert Rules.RULE_HASH != constants.SIM_VERSION
     assert len(Rules.RULE_HASH) == 8, "지문은 8자리 hex 다"
@@ -322,7 +322,7 @@ def test_rule_fingerprint_holds_only_integers() -> None:
 
 def test_rule_hash_reacts_to_a_balance_change() -> None:
     """무기 값을 하나만 바꿔도 지문이 바뀐다 — 안 바뀌면 검사가 무의미하다."""
-    from talus.sim import weapons as Wp
+    from neodeol.sim import weapons as Wp
 
     before = Rules.rule_hash()
     original = Wp.WEAPONS[1]
@@ -468,7 +468,7 @@ def test_aim_timeout_resolves_the_turn_without_input() -> None:
     """
     import asyncio
 
-    from talus.room.service import RoomManager
+    from neodeol.room.service import RoomManager
 
     async def scenario() -> None:
         root = REPO if REPO else pathlib.Path(".")
@@ -515,7 +515,7 @@ def test_non_ascii_token_is_rejected_not_crashed() -> None:
     token 은 클라이언트가 주는 값이라 무엇이든 온다. REST 는 Pydantic 이 422 로 걸러서
     안 보였지만, **WebSocket 쿼리는 그대로 통과해 업그레이드 중 예외가 났다.**
     """
-    from talus.sim import rules as Rules
+    from neodeol.sim import rules as Rules
 
     with TestClient(app) as client:
         code, (host, _guest) = _make_room(client)

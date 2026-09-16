@@ -1,4 +1,4 @@
-# Talus
+# Neodeol
 
 턴제 포병 대전 게임. 웹 클라이언트 + 권위 서버(authoritative server) 구조의 멀티플레이.
 
@@ -8,8 +8,9 @@
 **현재 단계:** Phase 3 서버 미러, Phase 3.5 Canvas 감성 패스와 Phase 4 Canvas lockstep 수직 슬라이스를 완료했다.
 다음은 4인 실기기·장기 매치·재접속/오프라인 완료 조건을 닫는 Phase 4 안정화다. `docs/roadmap.md`가 기준이다.
 
-> **코드네임.** `Talus`는 절벽 아래 무너져 쌓인 암설 더미를 뜻하는 지질학 용어다.
-> 이 게임의 핵심 상수인 안식각(angle of repose)이 talus 개념에서 나온다.
+> **코드네임.** `Neodeol`(너덜)은 **너덜겅** — 절벽 아래 무너져 쌓인 돌 더미와 그 비탈을 가리키는
+> 우리말이다. 지질학의 talus/scree 지대가 바로 이것이다.
+> 이 게임의 핵심 상수인 안식각(angle of repose)이 너덜겅이 쌓이는 기울기 그 자체다.
 >
 > **IP 주의.** Scorched Earth, 포트리스, 건바운드의 **규칙과 메카닉은 저작권 대상이 아니므로 그대로 가져간다.**
 > 게임명, 무기 고유명(Death's Head, MIRV, Funky Bomb 등), 캐릭터, 스프라이트, UI 레이아웃은 차용하지 않는다.
@@ -72,7 +73,7 @@
 ## 저장소 구조
 
 ```
-server/src/talus/
+server/src/neodeol/
   sim/          순수 시뮬레이션. I/O 없음. 여기가 게임의 진실.
     intmath.py    floor_div · isqrt · iabs · clamp_int · hash32 (numpy 벡터 + 스칼라)
     trig.py       tables/trig.bin 조회. **파일은 호출자가 읽어 넣는다** (절대 규칙 1)
@@ -117,7 +118,7 @@ docker-compose.yml
 ```
 Phase 0  tools/sandbox/automaton.js     ← 참조 구현. 순서 독립성이 검증된 원본
 Phase 2  client/src/sim/terrain.ts      ← 위의 정수화 이식
-Phase 3  server/src/talus/sim/terrain.py ← TS의 1:1 번역. 창의성 없음
+Phase 3  server/src/neodeol/sim/terrain.py ← TS의 1:1 번역. 창의성 없음
 ```
 
 권위는 서버에 있지만(절대 규칙 5) **구현의 원본은 클라이언트 쪽이다.** 순서를 뒤집으면
@@ -173,7 +174,7 @@ docker compose exec server python -m pytest /app/tests/test_determinism.py -m sl
 의도적으로 밸런스를 바꿔 리플레이가 깨졌다면, **깨진 이유를 커밋 메시지에 적고** 골든 파일을 재생성한다.
 이유 없이 재생성하는 것은 금지다. 그게 결정론 버그를 은폐하는 가장 흔한 경로다.
 
-상수값이 그대로인 `sim/` 절차·알고리즘 변경은 `server/src/talus/constants.py`의
+상수값이 그대로인 `sim/` 절차·알고리즘 변경은 `server/src/neodeol/constants.py`의
 `RULES_VERSION`도 올린다. 교차 골든은 이 수동 갱신을 잊었을 때의 두 번째 안전망이다.
 
 ---

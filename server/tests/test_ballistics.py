@@ -14,8 +14,8 @@ import pathlib
 
 import pytest
 
-from talus.sim import ballistics as B
-from talus.sim import trig
+from neodeol.sim import ballistics as B
+from neodeol.sim import trig
 
 
 def _find_repo_root() -> pathlib.Path | None:
@@ -102,7 +102,7 @@ def test_ballistics_fits_int32() -> None:
 @pytest.mark.determinism
 def test_shot_is_reproducible() -> None:
     """같은 입력이 같은 궤적을 낸다. 100회."""
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     T.grid.fill(T.EMPTY)
     T.grid.reshape(T.H, T.W)[400:, :] = T.ROCK
@@ -121,7 +121,7 @@ def test_shot_is_reproducible() -> None:
 @pytest.mark.determinism
 def test_reseat_drops_tank_onto_terrain() -> None:
     """지형이 깎이면 탱크가 그 위로 내려앉는다 (§6.1)."""
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     T.grid.fill(T.EMPTY)
     T.grid.reshape(T.H, T.W)[400:, :] = T.ROCK
@@ -139,7 +139,7 @@ def test_reseat_drops_tank_onto_terrain() -> None:
 @pytest.mark.determinism
 def test_tank_slope_changes_real_shot_angle() -> None:
     """조준각은 차체 기준이며 경사진 지형에서는 실제 탄도각이 함께 기울어진다."""
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     center = T.W // 2
     T.grid.fill(T.EMPTY)
@@ -164,7 +164,7 @@ def test_damage_is_computed_before_application() -> None:
 
     순차 적용하면 먼저 밀린 탱크가 뒤 폭발을 피해 **슬롯 순서가 유불리를 만든다.**
     """
-    from talus.sim import terrain as T
+    from neodeol.sim import terrain as T
 
     T.grid.fill(T.EMPTY)
     tanks = [B.make_tank(0, 5000, "a"), B.make_tank(1, 5100, "b")]

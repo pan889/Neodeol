@@ -143,5 +143,5 @@
     }
   }
 
-  root.TalusMsgpack = { encode, decode };
+  root.NeodeolMsgpack = { encode, decode };
 })(window);
