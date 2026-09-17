@@ -18,6 +18,7 @@ export const CFG = {
     gravity: 12,
     powerScale: 624,
     windMax: 4,
+    windScaleQ8: 192,
     dragQ16: 0,
     maxFlightTicks: 1800,
     selfHitIgnore: 8,
@@ -48,6 +49,11 @@ export function simulateShot(x0, y0, angle10, power, wind, shooterIdx, tanks, st
 export function continueShot(x0, y0, vx, vy, wind, shooterIdx, tanks) {
     return integrate(x0, y0, vx, vy, wind, shooterIdx, tanks, false);
 }
+export function windAcceleration(wind, tick) {
+    const magnitude = iabs(wind) * CFG.windScaleQ8;
+    const acceleration = (magnitude * (tick + 1) >> 8) - (magnitude * tick >> 8);
+    return wind < 0 ? -acceleration : acceleration;
+}
 function integrate(x0, y0, vx0, vy0, wind, shooterIdx, tanks, stopAtApex) {
     let vx = vx0;
     let vy = vy0;
@@ -62,7 +68,7 @@ function integrate(x0, y0, vx0, vy0, wind, shooterIdx, tanks, stopAtApex) {
     let apexVx = 0;
     let apexVy = 0;
     for(let t = 0; t < CFG.maxFlightTicks; t++){
-        vx += wind;
+        vx += windAcceleration(wind, t);
         vy += CFG.gravity;
         if (CFG.dragQ16 !== 0) vx -= vx * CFG.dragQ16 >> 16;
         const L = iabs(vx) + iabs(vy);
@@ -135,7 +141,7 @@ export function flatRangePx(angle10, power, wind) {
     let x = 0;
     let y = 0;
     for(let t = 0; t < CFG.maxFlightTicks; t++){
-        vx += wind;
+        vx += windAcceleration(wind, t);
         vy += CFG.gravity;
         if (CFG.dragQ16 !== 0) vx -= vx * CFG.dragQ16 >> 16;
         const L = iabs(vx) + iabs(vy);

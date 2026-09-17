@@ -109,6 +109,7 @@ export function ruleFingerprint(): number[] {
     B.CFG.gravity,
     B.CFG.powerScale,
     B.CFG.windMax,
+    B.CFG.windScaleQ8,
     B.CFG.dragQ16,
     B.CFG.maxFlightTicks,
     B.CFG.selfHitIgnore,

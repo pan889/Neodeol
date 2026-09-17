@@ -690,13 +690,8 @@ def derive_wind(map_seed: int, turn_no: int, previous_wind: int = 0) -> int:
     if max_wind <= 0:
         return 0
     roll = hash32_scalar(map_seed ^ 0x5715, turn_no, previous_wind, 0) % 20
-    delta = -3 if roll == 0 else (3 if roll == 19 else (-1 if roll < 8 else (0 if roll < 12 else 1)))
-    candidate = previous_wind + delta
-    if candidate > max_wind:
-        return max_wind - (candidate - max_wind)
-    if candidate < -max_wind:
-        return -max_wind + (-max_wind - candidate)
-    return clamp_int(candidate, -max_wind, max_wind)
+    delta = -1 if roll < 4 else (1 if roll >= 16 else 0)
+    return clamp_int(previous_wind + delta, -max_wind, max_wind)
 
 
 def match_leaders(players: list[Player]) -> list[int]:

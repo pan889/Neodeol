@@ -48,11 +48,11 @@ test("split, rolling and drilling legs start at the parent end without serializi
   assert.deepEqual(legs, before);
 });
 
-test("maximum power clears the map width against maximum headwind without changing old shots", () => {
+test("maximum power clears the map width against maximum headwind without changing calm shots", () => {
   assert.equal(Ballistics.MAX_POWER, 1500);
   assert.equal(Ballistics.flatRangePx(450, 1000, 0), 1899);
   assert.equal(Ballistics.flatRangePx(450, Ballistics.MAX_POWER, 0), 4307);
-  assert.equal(Ballistics.flatRangePx(450, Ballistics.MAX_POWER, -Ballistics.CFG.windMax), 2871);
+  assert.equal(Ballistics.flatRangePx(450, Ballistics.MAX_POWER, -Ballistics.CFG.windMax), 3230);
   assert.ok(Ballistics.flatRangePx(450, Ballistics.MAX_POWER, -Ballistics.CFG.windMax) > Ballistics.MAP_W_SUB / Ballistics.SUBPX);
 });
 

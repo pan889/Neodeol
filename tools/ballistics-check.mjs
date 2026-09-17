@@ -17,6 +17,8 @@
  * `simulate()` 안의 적분 루프뿐이며, 그때 float 는 전부 제거된다
  * (여기서 float 는 표 출력과 목표치 판정에만 쓴다).
  */
+import { windAcceleration } from "./multiplayer/sim/ballistics.js";
+
 const SUBPX = 16, TICK_HZ = 60, MAP_W_PX = 1920;
 const MAX_FLIGHT_TICKS = 1800;
 
@@ -37,7 +39,7 @@ function simulate({ power, deg10, gravity, powerScale, wind = 0, drag = 0 }) {
   let x = 0, y = 0, t = 0, apexY = 0;
 
   while (t < MAX_FLIGHT_TICKS) {
-    vx += wind;                                  // 1) 수평 등가속도
+    vx += windAcceleration(wind, t);              // 1) 75% 수평 가속
     vy += gravity;                               // 2)
     if (drag !== 0) vx -= (vx * drag) >> 16;     // 3)
 
@@ -86,14 +88,14 @@ if (only("--range")) {
 }
 
 if (only("--wind")) {
-  head("바람 편차 — 수평 편차 / 사거리 비는 정확히 w/g 다");
-  console.log(`  ${C.d}POWER_SCALE=320, GRAVITY=12${C.x}`);
+  head("바람 편차 — 현재 수평 영향 75%, 편차 / 사거리 비는 약 (w × 0.75)/g");
+  console.log(`  ${C.d}POWER_SCALE=624, GRAVITY=12, WIND_SCALE_Q8=192${C.x}`);
   console.log();
-  console.log(`  ${C.d}각도   사거리   WIND_MAX=1        =2                =6${C.x}`);
+  console.log(`  ${C.d}각도   사거리   WIND=1            =2                =4${C.x}`);
   for (const deg of [300, 450, 600, 700, 800]) {
-    const base = simulate({ power: 1000, deg10: deg, gravity: 12, powerScale: 320 });
-    const cells = [1, 2, 6].map((w) => {
-      const d = simulate({ power: 1000, deg10: deg, gravity: 12, powerScale: 320, wind: w }).rangePx - base.rangePx;
+    const base = simulate({ power: 1000, deg10: deg, gravity: 12, powerScale: 624 });
+    const cells = [1, 2, 4].map((w) => {
+      const d = simulate({ power: 1000, deg10: deg, gravity: 12, powerScale: 624, wind: w }).rangePx - base.rangePx;
       const pct = d / base.rangePx * 100;
       const s = `${d.toFixed(0)}px (${pct.toFixed(0)}%)`;
       return (pct > 30 ? C.y + s + C.x : s).padEnd(26);

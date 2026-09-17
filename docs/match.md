@@ -5,7 +5,7 @@ Phase 1 프로토타입(`tools/prototype/match.js`, 지금은 삭제)에서 플�
 AI 는 규칙이 아니라 **입력 생성기**라 `tools/prototype/ai.js` 에 남겼다 — `intent` 를 만들 뿐이고
 그 다음은 전부 `sim/` 이 정하므로 규칙 지문에도 안 들어간다.
 
-여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 5`의 잠정 기준선이다. 값을 바꾸면
+여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 11`의 잠정 기준선이다. 값을 바꾸면
 `MATCH_VERSION`, `server/src/neodeol/constants.py`, match 골든을 함께 갱신한다.
 
 ---
@@ -84,22 +84,24 @@ MatchState {
 ```text
 turnSeed = hash32(mapSeed, turnNo, 0, 0)
 roll     = hash32(mapSeed ^ 0x5715, turnNo, previousWind, 0) % 20
-delta    = roll == 0 ? -3 : roll == 19 ? +3 : gentle(roll)
-wind     = reflect(previousWind + delta, -WIND_MAX, +WIND_MAX)
+delta    = roll < 4 ? -1 : roll >= 16 ? +1 : 0
+wind     = clamp(previousWind + delta, -WIND_MAX, +WIND_MAX)
 ```
 
 - 첫 턴은 `previousWind = 0`에서 시작하며, 이후 **매 턴** 다음 바람을 파생한다.
-- `gentle(roll)`의 경계는 아래와 같다. **자리표시자가 아니라 명세다** — 이 표가 없으면
+- `delta`의 경계는 아래와 같다. **자리표시자가 아니라 명세다** — 이 표가 없으면
   문서만 보고 재구현할 수 없고, 재구현이 안 되면 두 언어가 갈라져도 판정할 근거가 없다.
 
-  | `roll` | 1~7 | 8~11 | 12~18 |
+  | `roll` | 0~3 | 4~15 | 16~19 |
   |---|---:|---:|---:|
   | `delta` | `-1` | `0` | `+1` |
 
-  좌우 대칭(7:7)이고 **멈춰 있는 것은 20%뿐**이다. 바람이 계속 움직여야 직전 발의 학습이
-  그대로 반복되지 않는다 — `game-design.md` §2 가 바람을 불확실성의 첫 겹으로 둔 이유다.
-- 전체의 90%는 완만한 변화, 10%는 `±3` 돌풍이다.
-- `reflect`는 `±WIND_MAX`를 넘은 만큼 경계 안쪽으로 되돌린다. 실제 턴 변화량은 최대 3이다.
+  좌우 대칭(4:4)이고 **60%는 현재 바람을 유지**한다. 이전 사격으로 익힌 조준을 유지하면서
+  남은 40%의 턴에서만 한 칸씩 변한다. `±3` 돌풍은 없앤다.
+- `clamp`는 `±WIND_MAX`에서 바깥으로 가려는 바람을 그 경계에 유지한다. 경계에서는 유지 확률이 80%다.
+- 실제 턴 변화량은 최대 1이며, 양수에서 음수로 바뀔 때 반드시 0인 턴을 거친다.
+- 표시 바람은 정수 `-4..4`다. 탄도에 적용하는 75% 계수는 `simulation.md` §4.2를 따른다.
+- 로컬 플레이·측풍계 예보·서버의 다음 턴은 모두 이 함수를 공유한다.
 - 각 턴의 정착 시작 전에 `terrain.seed = turnSeed`, `terrain.step = 0`으로 둔다.
 - 연결성 재검사로 정착을 재개할 때는 같은 턴 안이므로 `step`을 리셋하지 않는다.
 

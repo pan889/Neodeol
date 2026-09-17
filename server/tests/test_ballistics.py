@@ -50,7 +50,7 @@ def test_flat_range_matches_doc_table() -> None:
     """
     assert B.flat_range_px(450, 1000, 0) == 1899, "기존 파워 1000의 45° 사거리"
     assert B.flat_range_px(450, B.MAX_POWER, 0) == 4307
-    assert B.flat_range_px(450, B.MAX_POWER, -B.CFG.wind_max) == 2871
+    assert B.flat_range_px(450, B.MAX_POWER, -B.CFG.wind_max) == 3230
     assert B.flat_range_px(450, B.MAX_POWER, -B.CFG.wind_max) > B.MAP_W_SUB // B.SUBPX
 
 
@@ -81,6 +81,33 @@ def test_wind_pushes_both_ways() -> None:
     base = B.flat_range_px(450, 1000, 0)
     assert B.flat_range_px(450, 1000, 2) > base
     assert B.flat_range_px(450, 1000, -2) < base
+
+
+@pytest.mark.determinism
+def test_wind_acceleration_preserves_fractional_strength_and_direction() -> None:
+    assert B.CFG.wind_scale_q8 == 192
+    assert [B.wind_acceleration(1, tick) for tick in range(4)] == [0, 1, 1, 1]
+    for wind in range(1, B.CFG.wind_max + 1):
+        accumulated = 0
+        for tick in range(B.CFG.max_flight_ticks):
+            acceleration = B.wind_acceleration(wind, tick)
+            assert B.wind_acceleration(-wind, tick) == -acceleration
+            assert B.wind_acceleration(0, tick) == 0
+            accumulated += acceleration
+            assert accumulated == (wind * 192 * (tick + 1)) >> 8
+
+
+@pytest.mark.determinism
+def test_wind_deflection_is_three_quarters_of_previous_strength(monkeypatch: pytest.MonkeyPatch) -> None:
+    for angle in (450, 700, 800):
+        base = B.flat_range_px(angle, 1000, 0)
+        for wind in (-4, -2, -1, 1, 2, 4):
+            monkeypatch.setattr(B.CFG, "wind_scale_q8", 192)
+            softened = B.flat_range_px(angle, 1000, wind) - base
+            monkeypatch.setattr(B.CFG, "wind_scale_q8", 256)
+            original = B.flat_range_px(angle, 1000, wind) - base
+            assert softened * original > 0
+            assert abs(original) * 70 <= abs(softened) * 100 <= abs(original) * 78
 
 
 @pytest.mark.determinism

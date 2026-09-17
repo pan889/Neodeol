@@ -36,6 +36,7 @@ export interface BallisticsConfig {
   gravity: number;
   powerScale: number;
   windMax: number;
+  windScaleQ8: number;
   dragQ16: number;
   maxFlightTicks: number;
   selfHitIgnore: number;
@@ -52,6 +53,7 @@ export const CFG: BallisticsConfig = {
   gravity: 12,
   powerScale: 624, // B12 확정 — 최대 파워 45° 사거리 = 맵 폭
   windMax: 4,
+  windScaleQ8: 192,
   dragQ16: 0,
   maxFlightTicks: 1800,
   selfHitIgnore: 8,
@@ -139,6 +141,12 @@ export function continueShot(
   return integrate(x0, y0, vx, vy, wind, shooterIdx, tanks, false);
 }
 
+export function windAcceleration(wind: number, tick: number): number {
+  const magnitude = iabs(wind) * CFG.windScaleQ8;
+  const acceleration = ((magnitude * (tick + 1)) >> 8) - ((magnitude * tick) >> 8);
+  return wind < 0 ? -acceleration : acceleration;
+}
+
 function integrate(
   x0: number,
   y0: number,
@@ -164,7 +172,7 @@ function integrate(
 
   for (let t = 0; t < CFG.maxFlightTicks; t++) {
     /* 틱당 순서를 고정한다 (§4.2). 순서가 바뀌면 궤적이 달라진다. */
-    vx += wind;
+    vx += windAcceleration(wind, t);
     vy += CFG.gravity;
     if (CFG.dragQ16 !== 0) vx -= (vx * CFG.dragQ16) >> 16;
 
@@ -231,7 +239,7 @@ export function flatRangePx(angle10: number, power: number, wind: number): numbe
   let x = 0;
   let y = 0;
   for (let t = 0; t < CFG.maxFlightTicks; t++) {
-    vx += wind;
+    vx += windAcceleration(wind, t);
     vy += CFG.gravity;
     if (CFG.dragQ16 !== 0) vx -= (vx * CFG.dragQ16) >> 16;
     const L = iabs(vx) + iabs(vy);

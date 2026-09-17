@@ -1,8 +1,11 @@
 """매치 진행 규칙의 작은 불변식."""
 
+import pytest
+
 from neodeol.sim import ballistics as B
 from neodeol.sim import match as Match
 from neodeol.sim import weapons as Wp
+from neodeol.sim.intmath import hash32_scalar
 
 
 def test_power_range_includes_long_range_output_and_rejects_excess() -> None:
@@ -23,15 +26,40 @@ def test_turn_wind_changes_gradually_and_varies() -> None:
         next_wind = Match.derive_wind(0x55, turn_no, wind)
         assert -B.CFG.wind_max <= next_wind <= B.CFG.wind_max
         deltas.append(next_wind - wind)
-        assert abs(next_wind - wind) <= 3
+        assert abs(next_wind - wind) <= 1
+        assert next_wind * wind >= 0
+        assert next_wind == Match.derive_wind(0x55, turn_no, wind)
         wind = next_wind
         seen.add(wind)
 
     assert len(seen) >= 7
     assert any(value < 0 for value in seen)
     assert any(value > 0 for value in seen)
-    assert any(abs(delta) >= 2 for delta in deltas)
-    assert sum(abs(delta) >= 2 for delta in deltas) < len(deltas) // 5
+    assert len(deltas) // 2 < deltas.count(0) < len(deltas) * 4 // 5
+
+
+def test_wind_roll_distribution_and_clamped_edges() -> None:
+    observed = set()
+    for previous_wind in range(-B.CFG.wind_max, B.CFG.wind_max + 1):
+        for turn_no in range(1, 257):
+            roll = hash32_scalar(0x55 ^ 0x5715, turn_no, previous_wind, 0) % 20
+            observed.add(roll)
+            delta = -1 if roll < 4 else (1 if roll >= 16 else 0)
+            expected = max(-B.CFG.wind_max, min(B.CFG.wind_max, previous_wind + delta))
+            assert Match.derive_wind(0x55, turn_no, previous_wind) == expected
+    assert observed == set(range(20))
+
+
+@pytest.mark.parametrize("maximum", (0, 1, 2, 4))
+def test_small_wind_ranges_cannot_overflow_or_reverse_abruptly(maximum: int, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(B.CFG, "wind_max", maximum)
+    wind = 0
+    for turn_no in range(1, 513):
+        following = Match.derive_wind(149, turn_no, wind)
+        assert -maximum <= following <= maximum
+        assert abs(following - wind) <= 1
+        assert following * wind >= 0
+        wind = following
 
 
 # ══════════════════════════════════════════════════════════════════════════

@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 10;
+export const MATCH_VERSION = 11;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {
@@ -622,11 +622,8 @@ export function deriveWind(mapSeed: number, turnNo: number, previousWind = 0): n
   const maxWind = B.CFG.windMax;
   if (maxWind <= 0) return 0;
   const roll = hash32(mapSeed ^ 0x5715, turnNo, previousWind, 0) % 20;
-  const delta = roll === 0 ? -3 : (roll === 19 ? 3 : (roll < 8 ? -1 : (roll < 12 ? 0 : 1)));
-  const candidate = previousWind + delta;
-  if (candidate > maxWind) return maxWind - (candidate - maxWind);
-  if (candidate < -maxWind) return -maxWind + (-maxWind - candidate);
-  return clampInt(candidate, -maxWind, maxWind);
+  const delta = roll < 4 ? -1 : (roll >= 16 ? 1 : 0);
+  return clampInt(previousWind + delta, -maxWind, maxWind);
 }
 
 export function matchLeaders(players: Player[]): number[] {

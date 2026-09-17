@@ -316,7 +316,7 @@ function showHelp() {
     + `<div><strong>02 / 파워</strong><p><kbd>Space</kbd>를 누르고, 원하는 힘에서 놓기.<br>휠·<kbd>↑</kbd> <kbd>↓</kbd>·직접 입력도 가능합니다.</p></div>`
     + `<div><strong>03 / 무기와 지형</strong><p><kbd>1</kbd>–<kbd>8</kbd>로 무기 선택.<br>적 아래의 흙을 부수거나 적층탄으로 지형을 쌓으세요.</p></div>`
     + `<div><strong>04 / 다섯 번의 교전</strong><p>라운드 사이 보급, 누적 점수로 승부.<br>지형과 남은 탄약은 다음 라운드로 이어집니다.</p></div></div>`
-    + `<p class="sub">Shift + 방향키·휠: 미세 조정 · 하단 파워 바: 목표 핀 · 바람은 매 턴 변합니다.<br>PC 키보드·마우스 권장. 터치에서는 각도·파워 입력 후 발사 버튼을 사용할 수 있습니다.<br>싱글플레이는 메뉴를 여는 동안 일시정지합니다. 멀티플레이는 계속 진행됩니다.</p>`
+    + `<p class="sub">Shift + 방향키·휠: 미세 조정 · 하단 파워 바: 목표 핀 · 바람은 유지되거나 한 칸씩 변합니다.<br>PC 키보드·마우스 권장. 터치에서는 각도·파워 입력 후 발사 버튼을 사용할 수 있습니다.<br>싱글플레이는 메뉴를 여는 동안 일시정지합니다. 멀티플레이는 계속 진행됩니다.</p>`
     + `<div class="row"><button class="fire" data-close>전장으로 돌아가기</button></div>`);
   $("mbox").querySelector("[data-close]").textContent = SOLO.home ? "작전실로 돌아가기" : "전장으로 돌아가기";
   $("mbox").querySelector("[data-close]").onclick = closeModal;
@@ -501,19 +501,9 @@ function showRange() {
   $("oPct").style.color = Math.abs(pct - 100) <= 5 ? "var(--ok)" : "var(--warn)";
 }
 
-/* 평상시 ±1, 약 10% 확률로 ±3 돌풍이 분다 (game-design.md §9, decisions.md B3) */
-function nextWindValue(mapSeed, turnNo, previousWind, maxWind = P.CFG.windMax) {
-  if (maxWind <= 0) return 0;
-  const roll = hash32(mapSeed ^ 0x5715, turnNo, previousWind, 0) % 20;
-  const delta = roll === 0 ? -3 : (roll === 19 ? 3 : (roll < 8 ? -1 : (roll < 12 ? 0 : 1)));
-  const candidate = previousWind + delta;
-  if (candidate > maxWind) return maxWind - (candidate - maxWind);
-  if (candidate < -maxWind) return -maxWind + (-maxWind - candidate);
-  return Math.max(-maxWind, Math.min(maxWind, candidate));
-}
 function deriveWind() {
   const previous = G.wind;
-  G.wind = nextWindValue(G.seed, G.turnNo, previous);
+  G.wind = M.deriveWind(G.seed, G.turnNo, previous);
   G.windDelta = G.wind - previous;
 }
 /* turnSeed = hash32(mapSeed, turnNo, 0, 0) — decisions.md B2 확정 */
@@ -2047,7 +2037,7 @@ function syncWindHud() {
   const details = [];
   if (gust) details.push(`돌풍 ${G.windDelta >= 0 ? "+" : ""}${G.windDelta}`);
   if (player?.items.anemo > 0) {
-    const forecast = nextWindValue(G.seed, G.turnNo + 1, G.wind);
+    const forecast = M.deriveWind(G.seed, G.turnNo + 1, G.wind);
     details.push(`NEXT ${forecast >= 0 ? "+" : ""}${forecast}`);
   }
   indicator.classList.toggle("gust", gust || Math.abs(ratio) > .6);

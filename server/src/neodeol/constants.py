@@ -27,7 +27,7 @@ from typing import Final
 
 # ── 규칙 신원 (netcode.md §7.3) ───────────────────────────────────────
 # 상수값이 그대로인 로직 변경에도 SIM_VERSION 이 바뀌도록 수동으로 올린다.
-RULES_VERSION: Final = 8
+RULES_VERSION: Final = 9
 
 # ── 격자 (terrain.md §1) ────────────────────────────────────────────────
 GRID_W: Final = 960
@@ -85,7 +85,7 @@ MAPGEN_VERSION: Final = 3
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 10
+MATCH_VERSION: Final = 11
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500
@@ -126,9 +126,10 @@ BLAST_RESIST_Q8: Final = {
 GRAVITY: Final = 12  # subpx/tick²
 POWER_SCALE: Final = 624
 POWER_MAX: Final = 1500
-# 편차/사거리 비는 정확히 WIND_MAX/GRAVITY 이고 파워와 무관하다 (실측 확인).
-# 직접 플레이 피드백에 따라 평상시에는 완만하게 변하되 드문 돌풍이 위협이 되도록 최대치를 4로 올린다.
-WIND_MAX: Final = 4  # subpx/tick²
+# 표시 바람의 75%를 수평 가속에 적용한다. 45° 최대 편차는 약 25%다.
+# 턴마다 60% 유지하고 나머지는 ±1만 변하며 경계에서는 클램프한다.
+WIND_MAX: Final = 4
+WIND_SCALE_Q8: Final = 192
 DRAG_Q16: Final = 0  # §4.5 — 항력 없음으로 시작
 MAX_FLIGHT_TICKS: Final = 1800  # 30초
 SELF_HIT_IGNORE_TICKS: Final = 8
