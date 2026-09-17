@@ -121,6 +121,7 @@ def rule_fingerprint() -> list[int]:
         B.CFG.gravity,
         B.CFG.power_scale,
         B.CFG.wind_max,
+        B.CFG.wind_scale_q8,
         B.CFG.drag_q16,
         B.CFG.max_flight_ticks,
         B.CFG.self_hit_ignore,

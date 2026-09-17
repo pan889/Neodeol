@@ -142,7 +142,7 @@ export const ITEMS = [
         key: "anemo",
         name: "측풍계",
         price: 500,
-        desc: "다음 턴 바람과 돌풍을 예보"
+        desc: "다음 턴 바람의 세기와 방향을 예보"
     }
 ];
 export function byId(id) {

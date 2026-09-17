@@ -59,6 +59,7 @@ class BallisticsConfig:
     gravity: int = 12
     power_scale: int = 624  # B12 확정 — 최대 파워 45° 사거리 = 맵 폭
     wind_max: int = 4
+    wind_scale_q8: int = constants.WIND_SCALE_Q8
     drag_q16: int = 0
     max_flight_ticks: int = 1800
     self_hit_ignore: int = 8
@@ -143,6 +144,12 @@ def continue_shot(
     return _integrate(x0, y0, vx, vy, wind, shooter_idx, tanks, False)
 
 
+def wind_acceleration(wind: int, tick: int) -> int:
+    magnitude = iabs(wind) * CFG.wind_scale_q8
+    acceleration = ((magnitude * (tick + 1)) >> 8) - ((magnitude * tick) >> 8)
+    return -acceleration if wind < 0 else acceleration
+
+
 def _integrate(
     x0: int,
     y0: int,
@@ -159,7 +166,7 @@ def _integrate(
 
     for t in range(CFG.max_flight_ticks):
         # 틱당 순서를 고정한다 (§4.2). 순서가 바뀌면 궤적이 달라진다.
-        vx += wind
+        vx += wind_acceleration(wind, t)
         vy += CFG.gravity
         if CFG.drag_q16 != 0:
             vx -= (vx * CFG.drag_q16) >> 16
@@ -228,8 +235,8 @@ def flat_range_px(angle10: int, power: int, wind: int) -> int:
     vy = -((v0 * trig.sin_q12(angle10)) >> 12)
     x = 0
     y = 0
-    for _t in range(CFG.max_flight_ticks):
-        vx += wind
+    for tick in range(CFG.max_flight_ticks):
+        vx += wind_acceleration(wind, tick)
         vy += CFG.gravity
         if CFG.drag_q16 != 0:
             vx -= (vx * CFG.drag_q16) >> 16

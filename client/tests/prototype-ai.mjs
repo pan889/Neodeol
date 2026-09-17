@@ -115,17 +115,6 @@ const MAP_SEED = 0x77;
 const SLOTS = 4;
 const CONN_MAX = 8;
 
-function nextWind(mapSeed, turnNo, previousWind) {
-  const maxWind = P.CFG.windMax;
-  if (maxWind <= 0) return 0;
-  const roll = hash32(mapSeed ^ 0x5715, turnNo, previousWind, 0) % 20;
-  const delta = roll === 0 ? -3 : roll === 19 ? 3 : roll < 8 ? -1 : roll < 12 ? 0 : 1;
-  const candidate = previousWind + delta;
-  if (candidate > maxWind) return maxWind - (candidate - maxWind);
-  if (candidate < -maxWind) return -maxWind + (-maxWind - candidate);
-  return Math.max(-maxWind, Math.min(maxWind, candidate));
-}
-
 function settleAll() {
   let steps = 0;
   let conn = 0;
@@ -169,7 +158,7 @@ try {
     /* beginTurn */
     game.turnNo++; roundTurn++; game.turns++;
     T.CFG.seed = hash32(MAP_SEED, game.turnNo, 0, 0);
-    game.wind = nextWind(MAP_SEED, game.turnNo, game.wind);
+    game.wind = M.deriveWind(MAP_SEED, game.turnNo, game.wind);
     for (const pl of roster) pl.intent = null;
     if (!roster[cur].alive) cur = nextAlive(cur);
     const actor = roster[cur];
