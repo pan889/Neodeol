@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { IMPACT_HOLD_MS, sampleFlightTrack, scopeCamera } from "../../tools/prototype/scope-camera.js";
+import { nuclearCloudBounds, nuclearCloudDuration } from "../../tools/prototype/nuclear-art.js";
 
 function track(points, start = 0, kind = "main", slot = 0) {
   return { start, duration: Math.max(1, points.length - 1),
@@ -113,4 +114,20 @@ test("scope framing never mutates match or projectile data", () => {
   const snapshot = JSON.stringify(state);
   assert.equal(scopeCamera(state).slot, 1);
   assert.equal(JSON.stringify(state), snapshot);
+});
+
+test("nuclear scope frames the entire mushroom beyond map edges without growth jitter", () => {
+  for (const [horizontal, vertical] of [[20, 180], [480, 360], [950, 530]]) {
+    const state = scene({ phase: "AIM", impactAt: 1000, tracks: [track([[horizontal, vertical]])],
+      impacts: [{ x: horizontal * 32, y: vertical * 32, weapon: { id: 7, carveCells: 128 } }] });
+    const camera = scopeCamera({ ...state, now: 1600 });
+    const bounds = nuclearCloudBounds({ x: horizontal, y: vertical, size: 128 });
+    assert.equal(camera.mode, "impact");
+    contains(camera, bounds.left, bounds.top); contains(camera, bounds.right, bounds.bottom);
+    assert.deepEqual(scopeCamera({ ...state, now: 5800 }), camera);
+    assert.equal(scopeCamera({ ...state, now: 1000 + nuclearCloudDuration() - 1 }).mode, "impact");
+    assert.equal(scopeCamera({ ...state, now: 1000 + nuclearCloudDuration() }).mode, "aim");
+    assert.equal(scopeCamera({ ...state, now: 2500, reducedMotion: true }).mode, "aim");
+    assert.equal(scopeCamera({ ...state, now: 1800, phase: "RESOLVE" }).mode, "flight");
+  }
 });

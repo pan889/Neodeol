@@ -2,6 +2,9 @@
 
 from neodeol.sim import match as Match
 from neodeol.sim import weapons as Wp
+from neodeol.sim import ballistics as Ballistics
+from neodeol.sim import terrain as Terrain
+from neodeol.sim import trig
 
 
 def test_nuclear_shell_is_late_game_purchase() -> None:
@@ -11,8 +14,9 @@ def test_nuclear_shell_is_late_game_purchase() -> None:
     assert weapon.name == "핵포탄"
     assert weapon.ammo0 == 0
     assert weapon.price == 4800
-    assert weapon.blast_radius == 4096
-    assert weapon.carve_cells == 80
+    assert weapon.max_damage == 200
+    assert weapon.blast_radius == 8192
+    assert weapon.carve_cells == 128
     assert Match.ammo_of(player, weapon.id) == 0
     assert Match.buy_weapon(player, weapon.id) is False
 
@@ -20,6 +24,26 @@ def test_nuclear_shell_is_late_game_purchase() -> None:
     assert Match.buy_weapon(player, weapon.id) is True
     assert player.gold == 0
     assert Match.ammo_of(player, weapon.id) == 1
+
+
+def test_nuclear_damage_falloff_and_shield() -> None:
+    weapon = Wp.by_id(Wp.NUCLEAR_WEAPON_ID)
+    distances = [0, 2048, 4096, 6144, 8191, 8192]
+    players = [Match.make_player(slot, f"Player {slot}", False, 12000 + distance)
+               for slot, distance in enumerate(distances)]
+    for player in players:
+        player.y = 8000 + (Ballistics.TANK_H >> 1)
+    hits = Ballistics.compute_damage(12000, 8000, weapon.to_damage(), players)
+    assert [hit.dmg for hit in hits] == [200, 150, 100, 50, 0]
+    assert [hit.idx for hit in hits] == [0, 1, 2, 3, 4]
+
+    Terrain.grid.fill(Terrain.EMPTY)
+    players[1].shield_up = True
+    det = Match.OwnedDetonation(x=12000, y=8000, weapon=weapon, owner=0)
+    Match.apply_detonations(players, [det])
+    assert players[0].hp == Ballistics.MAX_HP - 200
+    assert players[1].hp == Ballistics.MAX_HP
+    assert players[1].shield_up is False
 
 
 # ══════════════════════════════════════════════════════════════════════════
@@ -89,6 +113,10 @@ def test_nuclear_shell_goes_through_the_economy() -> None:
     match 골든이 못 덮는 유일한 무기라 여기서 닫는다. 초기 탄약이 0 이므로
     **사는 것 말고는 발사 경로가 없다** — `buy_weapon` 이 깨지면 이 무기는 게임에서 사라진다.
     """
+    trig_path = next((parent / "tables" / "trig.bin" for parent in pathlib.Path(__file__).resolve().parents
+                      if (parent / "tables" / "trig.bin").is_file()), None)
+    assert trig_path is not None, "tables/trig.bin 을 못 찾았다"
+    trig.load_trig(trig_path.read_bytes())
     nuke = Wp.by_id(Wp.NUCLEAR_WEAPON_ID)
     assert nuke.ammo0 == 0, "초기 탄약이 0 이 아니면 이 테스트의 전제가 깨진다"
 
@@ -110,6 +138,15 @@ def test_nuclear_shell_goes_through_the_economy() -> None:
         Match.Intent(angle10=450, power=800, weapon_id=nuke.id, move_dx=0, use_shield=False),
     )
     assert intent.weapon_id == nuke.id, "보유한 무기를 정규화가 되돌렸다"
+    Terrain.grid.fill(Terrain.EMPTY)
+    player.y = 8000
+    player.intent = intent
+    other = Match.make_player(1, "B", False, 24000)
+    result = Match.resolve_turn([player, other], 0)
+    assert result.legs
+    assert player.weapon_id == nuke.id
+    assert Match.ammo_of(player, nuke.id) == 0
+    assert Match.normalize_intent(player, intent).weapon_id == 0
 
 
 def test_weapon_prices_are_pinned_to_constants() -> None:

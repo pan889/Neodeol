@@ -366,6 +366,7 @@ def test_overkill_credits_only_what_was_actually_removed() -> None:
     players[1].hp = 3
     gold_before = players[0].gold
     nuke = Wp.by_id(Wp.NUCLEAR_WEAPON_ID)
+    players[0].x = players[1].x - nuke.blast_radius - B.CELL_SUBPX
     det = Match.OwnedDetonation(x=players[1].x, y=players[1].y - (B.TANK_H >> 1), weapon=nuke, owner=0)
 
     Match.apply_detonations(players, [det])

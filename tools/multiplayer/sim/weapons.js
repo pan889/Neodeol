@@ -106,12 +106,12 @@ export const WEAPONS = [
         id: 7,
         name: "핵포탄",
         kind: "plain",
-        maxDamage: 120,
-        blastRadius: 4096,
-        carveCells: 80,
+        maxDamage: 200,
+        blastRadius: 8192,
+        carveCells: 128,
         ammo0: 0,
         price: 4800,
-        desc: "초기 0발. 전장을 뒤엎는 초대형 폭발"
+        desc: "최대 200 피해 · 광역 파괴 · 버섯구름. 초기 0발"
     })
 ];
 export const NUCLEAR_WEAPON_ID = 7;

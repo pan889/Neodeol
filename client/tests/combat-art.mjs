@@ -4,6 +4,7 @@ import { SHELL_STYLES, shellStyle, projectilePose, drawProjectile, createEffectS
   drawFlightTrail, drawMuzzleFlash, drawImpact, drawCombatParticle, sampleSurface, drawWindField } from "../../tools/prototype/combat-art.js";
 import { TANK_VISUAL_SCALE } from "../../tools/prototype/battlefield-art.js";
 import { WEAPONS } from "../../tools/multiplayer/sim/weapons.js";
+import { createNuclearSprites, drawNuclearCloud, nuclearCloudLayout, nuclearCloudBounds, nuclearCloudDuration } from "../../tools/prototype/nuclear-art.js";
 
 function recorder() {
   const calls = [], stack = [], target = { globalAlpha: 1, globalCompositeOperation: "source-over" };
@@ -100,7 +101,7 @@ test("impact stages, deposit and shield effects remain finite and restore Canvas
   for (const weapon of WEAPONS) {
     const effect = Object.freeze({ x: 100, y: 200, size: weapon.carveCells || 30, weaponId: weapon.id,
       deposit: weapon.kind === "deposit", nuclear: weapon.id === 7, at: 1000 });
-    for (const age of [-1, 0, 1, 80, 200, 520, 800, 1150, 2200, 3499, 4000]) {
+    for (const age of [-1, 0, 1, 80, 200, 520, 800, 1150, 2200, 3499, 4000, 5200, 6199, 6200]) {
       for (const reducedMotion of [false, true]) {
         const output = recorder();
         drawImpact(output.context, effect, 1000 + age, { wind: -5, sprites, reducedMotion }); output.verify();
@@ -109,6 +110,73 @@ test("impact stages, deposit and shield effects remain finite and restore Canvas
   }
   const output = recorder();
   drawImpact(output.context, { x: 0, y: 0, size: 18, shield: true, at: 0 }, 100, { sprites }); output.verify();
+});
+
+test("nuclear cloud has a tall stem, broad cap, captured wind and a bounded lifetime", () => {
+  const effect = Object.freeze({ x: 480, y: 220, size: 128, at: 1000, wind: -4 });
+  const bounds = nuclearCloudBounds(effect), early = nuclearCloudLayout(effect, 1600);
+  const mature = nuclearCloudLayout(effect, 4000);
+  assert.ok(mature.height > early.height && mature.halfWidth > early.halfWidth);
+  assert.ok(mature.height > effect.size * 1.6 && mature.halfWidth > effect.size);
+  assert.ok(mature.drift < 0);
+  assert.ok(bounds.top <= effect.y - mature.height - mature.capHeight * 1.4);
+  assert.ok(bounds.left <= effect.x + mature.drift - mature.halfWidth * 1.2);
+  assert.equal(nuclearCloudLayout(effect, 999), null);
+  assert.equal(nuclearCloudLayout(effect, 1000 + nuclearCloudDuration()), null);
+  for (const age of [600, 1800, 3000, 5000, 6199]) {
+    const output = recorder();
+    drawNuclearCloud(output.context, effect, 1000 + age);
+    assert.ok(output.calls.some(([name]) => name === "bezierCurveTo"));
+    assert.ok(output.calls.filter(([name]) => name === "ellipse").length <= 56);
+    output.verify();
+  }
+  const first = recorder(), second = recorder();
+  drawImpact(first.context, { ...effect, nuclear: true, weaponId: 7 }, 4000, { wind: -4, sprites });
+  drawImpact(second.context, { ...effect, nuclear: true, weaponId: 7 }, 4000, { wind: 4, sprites });
+  assert.deepEqual(first.calls, second.calls);
+});
+
+test("reduced-motion nuclear cloud is a static silhouette without fire or gradients", () => {
+  const effect = Object.freeze({ x: 1, y: 2, size: 128, at: 0, wind: 4 });
+  const first = recorder(), second = recorder(), expired = recorder();
+  drawNuclearCloud(first.context, effect, 200, true);
+  drawNuclearCloud(second.context, effect, 800, true);
+  assert.deepEqual(first.calls, second.calls);
+  assert.ok(first.calls.some(([name]) => name === "bezierCurveTo"));
+  assert.equal(first.calls.some(([name]) => name === "drawImage" || name.startsWith("create")), false);
+  drawNuclearCloud(expired.context, effect, nuclearCloudDuration(true), true);
+  assert.equal(expired.calls.length, 0);
+  first.verify(); second.verify(); expired.verify();
+});
+
+test("nuclear smoke uses four deterministic cached textures and never rotates noise between frames", () => {
+  const canvases = [];
+  const makeCanvas = () => {
+    const canvas = { getContext() { return {
+      createImageData(width, height) { return { data: new Uint8ClampedArray(width * height * 4) }; },
+      putImageData(image) { canvas.pixels = image.data; },
+    }; } };
+    canvases.push(canvas); return canvas;
+  };
+  const textures = createNuclearSprites(makeCanvas);
+  assert.equal(textures.size, 4);
+  for (const canvas of canvases) {
+    assert.equal(canvas.width, 128); assert.equal(canvas.height, 128);
+    assert.equal(canvas.pixels[3], 0);
+    assert.equal(canvas.pixels[(64 * 128 + 64) * 4 + 3], 255);
+    assert.ok(new Set(canvas.pixels).size > 100);
+  }
+  const effect = { x: 400, y: 320, size: 128, at: 0, wind: 4 };
+  const first = recorder(), second = recorder();
+  drawNuclearCloud(first.context, effect, 2800, false, textures);
+  drawNuclearCloud(second.context, effect, 2850, false, textures);
+  assert.ok(first.calls.filter(([name]) => name === "drawImage").length >= 40);
+  assert.equal(first.calls.some(([name]) => name === "createRadialGradient"), false);
+  assert.deepEqual(first.calls.filter(([name]) => name === "rotate"), second.calls.filter(([name]) => name === "rotate"));
+  first.verify(); second.verify();
+  const duplicate = createNuclearSprites(makeCanvas);
+  assert.deepEqual([...duplicate.keys()], [...textures.keys()]);
+  for (const [key, canvas] of duplicate) assert.deepEqual(canvas.pixels, textures.get(key).pixels);
 });
 
 test("reduced motion disables muzzle flashes, particle motion and screen-blended fire", () => {

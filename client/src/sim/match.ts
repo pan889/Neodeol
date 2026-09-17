@@ -6,7 +6,7 @@ import * as B from "./ballistics.ts";
 import * as Wp from "./weapons.ts";
 import * as M from "./mapgen.ts";
 
-export const MATCH_VERSION = 11;
+export const MATCH_VERSION = 12;
 export const AMMO_INFINITE = 0x7fffffff;
 
 export const RULES = {

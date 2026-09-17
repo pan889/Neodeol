@@ -4,7 +4,7 @@ import * as T from "./terrain.js";
 import * as B from "./ballistics.js";
 import * as Wp from "./weapons.js";
 import * as M from "./mapgen.js";
-export const MATCH_VERSION = 11;
+export const MATCH_VERSION = 12;
 export const AMMO_INFINITE = 0x7fffffff;
 export const RULES = {
     rounds: 5,

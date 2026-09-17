@@ -1,5 +1,6 @@
 import { artHash } from "./battlefield-art.js";
 import { sampleFlightTrack } from "./scope-camera.js";
+import { drawNuclearCloud } from "./nuclear-art.js";
 
 export const SHELL_STYLES = Object.freeze([
   { code: "HE / M01", shape: "ogive", metal: "#a5a88b", band: "#dfb967", heat: "#ffd59a", length: 7.4, radius: 1.6 },
@@ -190,7 +191,7 @@ export function drawMuzzleFlash(context, muzzle, now, reducedMotion) {
 }
 
 export function drawImpact(context, effect, now, options) {
-  const { wind = 0, reducedMotion = false, sprites } = options;
+  const { wind = 0, reducedMotion = false, sprites, nuclearSprites } = options;
   const age = (now - effect.at) / 1000;
   if (age < 0) return;
   const style = shellStyle(effect.weaponId), size = effect.size;
@@ -201,6 +202,9 @@ export function drawImpact(context, effect, now, options) {
     context.restore(); return;
   }
   if (reducedMotion) {
+    if (effect.nuclear) {
+      context.restore(); drawNuclearCloud(context, effect, now, true); return;
+    }
     context.globalAlpha = Math.max(0, 1 - age / .55) * .55;
     context.strokeStyle = effect.deposit ? "#c9b287" : style.band; context.lineWidth = 1.1;
     context.beginPath(); context.arc(0, 0, size * .7, 0, Math.PI * 2); context.stroke();
@@ -246,25 +250,17 @@ export function drawImpact(context, effect, now, options) {
       context.lineTo(Math.cos(rotation) * reach, Math.sin(rotation) * reach); context.stroke();
     }
   }
-  const smokeDuration = nuclear ? 3.5 : 2.2;
-  if (age > .08 && age < smokeDuration) {
+  const smokeDuration = 2.2;
+  if (!nuclear && age > .08 && age < smokeDuration) {
     const progress = age / smokeDuration;
     const opacity = Math.sin(progress * Math.PI) * (effect.deposit ? .55 : .5) * Math.min(1, age / .35);
-    for (let plume = 0; plume < (nuclear ? 12 : 7); plume++) {
+    for (let plume = 0; plume < 7; plume++) {
       const hashed = artHash(effect.weaponId, plume, 1, 0x510C), side = (hashed & 255) / 127.5 - 1;
       const radius = size * (.18 + progress * .4 + (hashed & 7) * .015);
       const horizontal = side * size * (.2 + progress * .55) + wind * age * 1.5;
-      const vertical = nuclear ? -size * age * .4 - Math.sin(plume) * size * .17
-        : -size * progress * (effect.deposit ? 1.15 : .65) * (1 - Math.abs(side) * .45);
+      const vertical = -size * progress * (effect.deposit ? 1.15 : .65) * (1 - Math.abs(side) * .45);
       context.globalAlpha = opacity;
       context.drawImage(effect.deposit ? sprites.dust : sprites.smoke, horizontal - radius, vertical - radius, radius * 2, radius * 2);
-    }
-    if (nuclear) {
-      for (let stem = 0; stem < 5; stem++) {
-        const radius = size * (.12 + progress * .14), vertical = -size * age * .4 * stem / 5;
-        context.globalAlpha = opacity * .8;
-        context.drawImage(sprites.smoke, wind * age - radius, vertical - radius, radius * 2, radius * 2);
-      }
     }
   }
   if (!effect.deposit && age < .6) {
@@ -272,6 +268,7 @@ export function drawImpact(context, effect, now, options) {
     halo(context, 0, 0, size * .28, "#fff2c4", (1 - age / .6) * .85);
   }
   context.restore();
+  if (nuclear) drawNuclearCloud(context, effect, now, false, nuclearSprites);
 }
 
 export function drawCombatParticle(context, particle, sprites, reducedMotion = false) {

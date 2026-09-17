@@ -25,7 +25,7 @@ function framePoints(points, minimumWidth, padding, mapWidth, mapHeight) {
   return { left, top, width, height, outside };
 }
 
-export function scopeCamera({ player, phase, tracks, tick, impacts, impactAt, now, cell, mapWidth, mapHeight }) {
+export function scopeCamera({ player, phase, tracks, tick, impacts, impactAt, now, cell, mapWidth, mapHeight, reducedMotion = false }) {
   if (!player) return null;
   if (phase === "RESOLVE") {
     const projectiles = [];
@@ -36,14 +36,20 @@ export function scopeCamera({ player, phase, tracks, tick, impacts, impactAt, no
     if (projectiles.length) return { ...framePoints(projectiles, 105, 18, mapWidth, mapHeight),
       mode: "flight", slot: projectiles[0].slot, projectiles, count: projectiles.length };
   }
+  const nuclear = phase !== "RESOLVE" && impacts.some((impact) => impact.weapon.id === 7);
+  const hold = nuclear ? nuclearCloudDuration(reducedMotion) : IMPACT_HOLD_MS;
   const watchingImpact = phase !== "RESOLVE" && tracks.length > 0 && impactAt > 0
-    && (phase === "IMPACT" || phase === "SETTLE" || (now >= impactAt && now - impactAt < IMPACT_HOLD_MS));
+    && (phase === "IMPACT" || phase === "SETTLE" || (now >= impactAt && now - impactAt < hold));
   if (watchingImpact) {
     const points = [];
     for (const impact of impacts) {
       const radius = Math.max(10, impact.weapon.carveCells || impact.weapon.depositCells || 12);
       const horizontal = impact.x / cell, vertical = impact.y / cell;
       points.push({ x: horizontal - radius, y: vertical - radius }, { x: horizontal + radius, y: vertical + radius });
+      if (impact.weapon.id === 7) {
+        const bounds = nuclearCloudBounds({ x: horizontal, y: vertical, size: radius });
+        points.push({ x: bounds.left, y: bounds.top }, { x: bounds.right, y: bounds.bottom });
+      }
     }
     if (!points.length) {
       for (const track of tracks) {
@@ -57,3 +63,4 @@ export function scopeCamera({ player, phase, tracks, tick, impacts, impactAt, no
   return { ...framePoints([{ x: player.x / cell, y: player.y / cell - 7.75 }], 52.5, 0, mapWidth, mapHeight),
     mode: "aim", slot: player.slot, projectiles: [], count: 0 };
 }
+import { nuclearCloudBounds, nuclearCloudDuration } from "./nuclear-art.js";

@@ -5,7 +5,7 @@ Phase 1 프로토타입(`tools/prototype/match.js`, 지금은 삭제)에서 플�
 AI 는 규칙이 아니라 **입력 생성기**라 `tools/prototype/ai.js` 에 남겼다 — `intent` 를 만들 뿐이고
 그 다음은 전부 `sim/` 이 정하므로 규칙 지문에도 안 들어간다.
 
-여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 11`의 잠정 기준선이다. 값을 바꾸면
+여기의 수치는 최종 밸런스가 아니라 `MATCH_VERSION = 12`의 잠정 기준선이다. 값을 바꾸면
 `MATCH_VERSION`, `server/src/neodeol/constants.py`, match 골든을 함께 갱신한다.
 
 ---

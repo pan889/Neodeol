@@ -85,7 +85,7 @@ MAPGEN_VERSION: Final = 3
 
 # ── 매치 진행 (match.md) ────────────────────────────────────────────────
 # 알고리즘/절차가 바뀌면 MATCH_VERSION 을 올리고 match 골든을 재생성한다.
-MATCH_VERSION: Final = 11
+MATCH_VERSION: Final = 12
 MATCH_ROUNDS: Final = 5
 ROUND_TURN_CAP: Final = 40
 START_GOLD: Final = 1_500
@@ -204,7 +204,7 @@ WEAPON_TABLE: Final = (
     (4, "전복탄", "roll", 50, 1024, 26, 2, 900, 0, 0, 0, 140, 0, 0),
     (5, "성형탄", "plain", 95, 512, 5, 2, 950, 0, 0, 0, 0, 0, 0),
     (6, "적층탄", "deposit", 0, 512, 0, 2, 650, 0, 0, 0, 0, 30, 2),
-    (7, "핵포탄", "plain", 120, 4096, 80, 0, 4800, 0, 0, 0, 0, 0, 0),
+    (7, "핵포탄", "plain", 200, 8192, 128, 0, 4800, 0, 0, 0, 0, 0, 0),
 )
 
 #: 비-포탄 아이템 (game-design.md §6.2). 열: (id, key, name, price)

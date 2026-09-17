@@ -9,7 +9,8 @@
     "node": ">=22.6"
   },
   "scripts": {
-    "test": "npm run check:nofloat && npm run check:mirror && npm run test:determinism && npm run test:mapgen && npm run test:wind && npm run test:prototype-ai && npm run test:battlefield",
+    "test": "npm run check:nofloat && npm run check:mirror && npm run test:determinism && npm run test:mapgen && npm run test:wind && npm run test:nuclear && npm run test:prototype-ai && npm run test:battlefield",
+    "test:nuclear": "node --test tests/nuclear.mjs",
     "test:wind": "node --test tests/wind.mjs",
     "test:battlefield": "node --test tests/battlefield-art.mjs tests/combat-art.mjs tests/scope-camera.mjs",
     "test:mapgen": "node --experimental-strip-types --no-warnings --test tests/mapgen-variety.mts",

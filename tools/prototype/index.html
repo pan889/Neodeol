@@ -141,6 +141,7 @@ import { ENTITY_SCALE, buildGeology, terrainRelief, drawBackdrop, drawArtillery 
 import { shellStyle, projectilePose, drawProjectile, createEffectSprites, drawFlightTrail, drawMuzzleFlash,
   drawImpact, drawCombatParticle, sampleSurface, drawWindField } from "./combat-art.js";
 import { scopeCamera } from "./scope-camera.js";
+import { createNuclearSprites, drawNuclearCloud, nuclearCloudBounds, nuclearCloudDuration } from "./nuclear-art.js";
 import { buildFlightTimeline, flightTickAt } from "./flight-playback.js";
 import * as CanonWeapons from "../multiplayer/sim/weapons.js";
 import * as CanonMatch from "../multiplayer/sim/match.js";
@@ -408,12 +409,14 @@ function canControl(pl) {
 
 const REDUCED_MOTION = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const EFFECT_SPRITES = createEffectSprites(() => document.createElement("canvas"));
+const NUCLEAR_SPRITES = createNuclearSprites(() => document.createElement("canvas"));
 const FX = {
   lastNow: performance.now(), particles: [], explosions: [], muzzles: [], dust: [], surface: [],
   recoilUntil: new Float64Array(6), hitUntil: new Float64Array(6),
   tankTilt: new Float32Array(6),
   shakeAt: -1, shakePower: 0, shakeDuration: 720, focusX: W / 2, focusY: H / 2,
   flashAt: -1, flashPower: 0, flashDuration: 120, rumbleAt: 0,
+  roundPresentationAt: -1,
 };
 
 let announceTimer = 0;
@@ -1081,6 +1084,15 @@ function endRound(out) {
   AudioFx.round();
   drawCards();
 
+  const nuclear = FX.explosions.find((effect) => effect.nuclear);
+  if (nuclear && !REDUCED_MOTION && !G.fast && performance.now() < nuclear.at + 2800) {
+    FX.roundPresentationAt = nuclear.at + 2800;
+    return;
+  }
+  presentRoundResult();
+}
+
+function presentRoundResult() {
   if (G.round >= M.RULES.rounds) return showFinal();
   /* AI 상점을 먼저 처리하고 사람에게 상점을 띄운다 */
   for (const pl of G.players) {
@@ -1280,14 +1292,17 @@ const ter = $("ter"), tctx = ter.getContext("2d", { alpha: false });
 const ovl = $("ovl"), octx = ovl.getContext("2d");
 const scopeCanvas = $("scopeCanvas"), scopeContext = scopeCanvas.getContext("2d");
 let scopeOpen = innerWidth > 760;
-$("scopeBody").hidden = !scopeOpen;
-$("bTankScope").setAttribute("aria-expanded", String(scopeOpen));
-$("scopeToggle").textContent = scopeOpen ? "−" : "+";
+let dismissedNuclearAt = -1;
+function setScopeVisibility(visible) {
+  $("scopeBody").hidden = !visible;
+  $("bTankScope").setAttribute("aria-expanded", String(visible));
+  $("scopeToggle").textContent = visible ? "−" : "+";
+}
+setScopeVisibility(scopeOpen);
 $("bTankScope").onclick = () => {
-  scopeOpen = !scopeOpen;
-  $("scopeBody").hidden = !scopeOpen;
-  $("bTankScope").setAttribute("aria-expanded", String(scopeOpen));
-  $("scopeToggle").textContent = scopeOpen ? "−" : "+";
+  scopeOpen = $("scopeBody").hidden;
+  if (!scopeOpen) dismissedNuclearAt = FX.explosions.find((effect) => effect.nuclear)?.at ?? -1;
+  setScopeVisibility(scopeOpen);
 };
 for (const event of ["pointerdown", "pointermove", "pointerup", "click", "wheel"]) {
   $("tankScope").addEventListener(event, (input) => input.stopPropagation());
@@ -1366,6 +1381,8 @@ function resetPresentation(seed) {
   FX.particles.length = 0; FX.explosions.length = 0; FX.muzzles.length = 0; FX.dust.length = 0;
   FX.recoilUntil.fill(0); FX.hitUntil.fill(0); FX.tankTilt.fill(0); FX.shakeAt = -1; FX.flashAt = -1;
   FX.shakeDuration = 720; FX.flashDuration = 120;
+  FX.roundPresentationAt = -1;
+  dismissedNuclearAt = -1;
   for (let i = 0; i < 190; i++) {
     const h = visualHash(seed, i, 0, 0xD057);
     FX.dust.push({ x: (h & 0xFFFF) / 0xFFFF * W, y: 38 + ((h >>> 16) & 0xFF) / 255 * (H - 100),
@@ -1466,7 +1483,7 @@ function resetFxClock(now) {
       else if (p.kind === "smoke") { p.vy -= 2.5 * dt; p.vx += G.wind * .65 * dt; p.size += 4.2 * dt; }
     }
   }
-  FX.explosions = FX.explosions.filter((e) => now - e.at < (e.nuclear ? 3600 : 2300));
+  FX.explosions = FX.explosions.filter((e) => now - e.at < (e.nuclear ? nuclearCloudDuration(REDUCED_MOTION) : 2300));
   FX.muzzles = FX.muzzles.filter((e) => now - e.at < 430);
   updateCamera(now);
 }
@@ -1495,7 +1512,7 @@ function startImpactFx(dets) {
     const deposit = det.weapon.kind === "deposit", nuclear = det.weapon.id === Wp.NUCLEAR_WEAPON_ID;
     const size = Math.max(10, det.weapon.carveCells || det.weapon.depositCells || 12);
     const x = sx(det.x), y = sy(det.y);
-    FX.explosions.push({ x, y, size, deposit, nuclear, weaponId: det.weapon.id, at: now });
+    FX.explosions.push({ x, y, size, deposit, nuclear, weaponId: det.weapon.id, wind: G.wind, at: now });
     if (size > largestSize) { largest = det; largestSize = size; }
     const count = nuclear ? 190 : Math.min(112, 24 + Math.round(size * 1.25));
     for (let i = 0; i < count; i++) {
@@ -1728,7 +1745,7 @@ function drawEffects(now) {
     if (particle.kind === "smoke" || particle.kind === "dust") drawCombatParticle(octx, particle, EFFECT_SPRITES, REDUCED_MOTION);
   }
   for (const effect of FX.explosions) {
-    drawImpact(octx, effect, now, { wind: G.wind, sprites: EFFECT_SPRITES, reducedMotion: REDUCED_MOTION });
+    drawImpact(octx, effect, now, { wind: G.wind, sprites: EFFECT_SPRITES, nuclearSprites: NUCLEAR_SPRITES, reducedMotion: REDUCED_MOTION });
   }
   for (const muzzle of FX.muzzles) drawMuzzleFlash(octx, muzzle, now, REDUCED_MOTION);
   for (const particle of FX.particles) {
@@ -1747,7 +1764,12 @@ function drawOverlay() {
   const now = FX.lastNow;
   const visibleHeight = BATTLE_VIEW.wide && innerWidth > 760 ? W * 9 / 21 : H;
   const active = G.players[G.cur];
-  const targetTop = active ? Math.max(0, Math.min(H - visibleHeight, sy(active.y) - visibleHeight * .7)) : 0;
+  let targetTop = active ? Math.max(0, Math.min(H - visibleHeight, sy(active.y) - visibleHeight * .7)) : 0;
+  if (G.phase !== "RESOLVE") {
+    for (const effect of FX.explosions) {
+      if (effect.nuclear) targetTop = Math.min(targetTop, Math.max(0, nuclearCloudBounds(effect).top - 12));
+    }
+  }
   BATTLE_VIEW.top = REDUCED_MOTION ? targetTop : BATTLE_VIEW.top + (targetTop - BATTLE_VIEW.top) * .15;
   $("stage").style.setProperty("--view-top", `${-BATTLE_VIEW.top / visibleHeight * 100}%`);
   octx.clearRect(0, 0, W, H);
@@ -1804,9 +1826,13 @@ function drawOverlay() {
 
 function drawTrackingScope(now) {
   const player = G.players[G.cur];
-  if (!scopeOpen || !player) return;
+  const nuclearPeek = G.phase !== "RESOLVE" && FX.explosions.find((effect) => effect.nuclear);
+  const visible = scopeOpen || Boolean(nuclearPeek && nuclearPeek.at !== dismissedNuclearAt);
+  setScopeVisibility(visible);
+  $("tankScope").dataset.nuclear = String(Boolean(visible && nuclearPeek));
+  if (!visible || !player) return;
   const camera = scopeCamera({ player, phase: G.phase, tracks: G.flightTracks, tick: G.flightTick,
-    impacts: G.dets, impactAt: G.impactAt, now, cell: CELL, mapWidth: W, mapHeight: H });
+    impacts: G.dets, impactAt: G.impactAt, now, cell: CELL, mapWidth: W, mapHeight: H, reducedMotion: REDUCED_MOTION });
   const scale = scopeCanvas.width / camera.width;
   const left = Math.max(0, camera.left), top = Math.max(0, camera.top);
   const width = Math.min(W, camera.left + camera.width) - left;
@@ -1819,6 +1845,15 @@ function drawTrackingScope(now) {
     scopeContext.drawImage(ovl, left * ENTITY_SCALE, top * ENTITY_SCALE, width * ENTITY_SCALE, height * ENTITY_SCALE,
       destinationX, destinationY, width * scale, height * scale);
   }
+  if (camera.outside) {
+    scopeContext.save(); scopeContext.scale(scale, scale); scopeContext.translate(-camera.left, -camera.top);
+    scopeContext.beginPath(); scopeContext.rect(camera.left, camera.top, camera.width, camera.height);
+    scopeContext.rect(0, 0, W, H); scopeContext.clip("evenodd");
+    for (const effect of FX.explosions) {
+      if (effect.nuclear) drawNuclearCloud(scopeContext, effect, now, REDUCED_MOTION, NUCLEAR_SPRITES);
+    }
+    scopeContext.restore();
+  }
   for (const track of camera.mode === "flight" ? G.flightTracks : []) {
     const pose = projectilePose(track, G.flightTick, CELL);
     if (!pose || (pose.horizontal >= 0 && pose.horizontal < W && pose.vertical >= 0 && pose.vertical < H)) continue;
@@ -1830,6 +1865,8 @@ function drawTrackingScope(now) {
   const magnification = Number((210 / camera.width).toFixed(1));
   const modeLabel = camera.mode === "flight" ? "TRACK" : camera.mode === "aim" ? "OPTIC" : "IMPACT";
   $("tankScope").dataset.mode = camera.mode;
+  const nuclearView = camera.mode === "impact" && FX.explosions.some((effect) => effect.nuclear);
+  $("tankScope").dataset.nuclear = String(nuclearView);
   $("scopeMode").textContent = `${modeLabel} ×${magnification}`;
   $("scopeUnit").style.color = TEAM[camera.slot];
   if (camera.mode === "aim") {
@@ -1838,7 +1875,7 @@ function drawTrackingScope(now) {
   } else {
     $("scopeUnit").textContent = camera.mode === "flight" ? `TRACK · ${camera.count}발` : camera.mode === "exit" ? "OUT OF FIELD" : `IMPACT · ${camera.count}곳`;
     $("scopeCondition").textContent = camera.mode === "flight" ? camera.outside ? "전장 밖 추적" : "포탄 추적 중"
-      : camera.mode === "exit" ? "전장 이탈" : "폭발·붕괴 관측";
+      : camera.mode === "exit" ? "전장 이탈" : nuclearView ? "핵폭발 · 버섯구름 관측" : "폭발·붕괴 관측";
   }
 }
 
@@ -2190,7 +2227,8 @@ function frame() {
     const elapsed = now - SOLO.pausedAt;
     for (const key of ["aiFireAt", "flightStartedAt", "impactAt"]) if (G[key] > 0) G[key] += elapsed;
     for (const effect of [...FX.explosions, ...FX.muzzles]) effect.at += elapsed;
-    for (const key of ["shakeAt", "flashAt", "rumbleAt"]) if (FX[key] >= 0) FX[key] += elapsed;
+    if (dismissedNuclearAt >= 0) dismissedNuclearAt += elapsed;
+    for (const key of ["shakeAt", "flashAt", "rumbleAt", "roundPresentationAt"]) if (FX[key] >= 0) FX[key] += elapsed;
     for (const deadlines of [FX.recoilUntil, FX.hitUntil]) {
       for (let index = 0; index < deadlines.length; index++) if (deadlines[index] > 0) deadlines[index] += elapsed;
     }
@@ -2209,6 +2247,9 @@ function frame() {
     if (now - G.impactAt >= (G.fast ? 20 : 92)) applyImpact();
   } else if (G.phase === "SETTLE") {
     settleTick(G.fast ? G.substeps * 12 : G.substeps);
+  } else if (G.phase === "ROUND" && FX.roundPresentationAt >= 0 && now >= FX.roundPresentationAt) {
+    FX.roundPresentationAt = -1;
+    presentRoundResult();
   }
 
   renderTerrain(); drawOverlay();
